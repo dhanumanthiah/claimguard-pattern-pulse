@@ -1,48 +1,77 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
   --color-navy: #1B3A6B;
   --color-teal: #0D7377;
-  --color-lightblue: #CADCFC;
-  --color-bg: #F4F7FB;
-  --color-slate: #1E293B;
+  --color-lightbg: #F4F7FB;
+  --color-dark: #1E293B;
+  --color-gray: #64748B;
+  --color-red: #DC2626;
+  --color-redlight: #FEF2F2;
+  --color-amber: #F59E0B;
+  --color-amberlight: #FFFBEB;
+  --color-green: #059669;
+  --color-greenlight: #F0FDF4;
 }
 
 @layer base {
   body {
-    background-color: var(--color-bg);
-    color: var(--color-slate);
     font-family: 'Inter', sans-serif;
+    background-color: var(--color-lightbg);
+    color: var(--color-dark);
   }
 }
 
 @layer utilities {
-  .glass-card {
-    @apply bg-white/90 backdrop-blur-xl border border-white/20 shadow-lg;
+  .typing-cursor::after {
+    content: '|';
+    animation: blink 1s step-start infinite;
   }
   
-  .glass-panel {
-    @apply bg-[#1B3A6B]/95 backdrop-blur-xl border-r border-white/10;
+  .typing-cursor-hidden::after {
+    content: '';
+    display: none;
+  }
+
+  .donut-chart {
+    background: conic-gradient(
+      var(--color-red) 0% 50%,
+      var(--color-amber) 50% 75%,
+      var(--color-green) 75% 100%
+    );
+    border-radius: 50%;
   }
 }
 
-/* Custom Animations from User Requirements */
-@keyframes fadeIn { 
-  from { opacity: 0; transform: translateY(8px); } 
-  to { opacity: 1; transform: translateY(0); } 
+@keyframes blink {
+  50% { opacity: 0; }
 }
 
-.row-animate { 
-  animation: fadeIn 0.4s ease forwards; 
+@keyframes fadeInUp {
+  from { 
+    opacity: 0; 
+    transform: translateY(8px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
 }
 
-@keyframes pulse-custom { 
-  0%, 100% { opacity: 1; } 
-  50% { opacity: 0.6; } 
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s ease forwards;
+  opacity: 0;
 }
 
-.pulse-custom { 
-  animation: pulse-custom 1.5s infinite; 
+@keyframes pulse-teal {
+  0% { box-shadow: 0 0 0 0 rgba(13, 115, 119, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(13, 115, 119, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(13, 115, 119, 0); }
+}
+
+.animate-pulse-teal {
+  animation: pulse-teal 2s infinite;
 }
 
 /* Custom Scrollbar */
