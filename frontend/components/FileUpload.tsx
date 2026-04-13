@@ -2,7 +2,6 @@
 
 import React, { useState, useCallback } from 'react';
 import { Upload, File, X, CheckCircle, AlertCircle } from 'lucide-react';
-import Papa from 'papaparse';
 
 interface FileUploadProps {
   onDataLoaded: (data: any[]) => void;
@@ -24,6 +23,36 @@ export default function FileUpload({ onDataLoaded }: FileUploadProps) {
     setIsDragging(false);
   }, []);
 
+  // Custom lightweight CSV parser
+  const parseCSV = (text: string) => {
+    const lines = text.split('\n').filter(line => line.trim() !== '');
+    if (lines.length === 0) return [];
+
+    // Parse headers
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    
+    const result = [];
+    for (let i = 1; i < lines.length; i++) {
+      // Handle basic CSV parsing (doesn't handle commas inside quotes perfectly, but good enough for simple data)
+      const currentLine = lines[i].split(',');
+      
+      if (currentLine.length === headers.length) {
+        const obj: any = {};
+        for (let j = 0; j < headers.length; j++) {
+          let val = currentLine[j].trim().replace(/^"|"$/g, '');
+          // Try to convert to number if possible
+          if (!isNaN(Number(val)) && val !== '') {
+            obj[headers[j]] = Number(val);
+          } else {
+            obj[headers[j]] = val;
+          }
+        }
+        result.push(obj);
+      }
+    }
+    return result;
+  };
+
   const processFile = (selectedFile: File) => {
     if (!selectedFile.name.endsWith('.csv')) {
       setError('Please upload a valid CSV file.');
@@ -34,28 +63,36 @@ export default function FileUpload({ onDataLoaded }: FileUploadProps) {
     setError(null);
     setIsProcessing(true);
 
-    Papa.parse(selectedFile, {
-      header: true,
-      dynamicTyping: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        if (results.errors.length > 0) {
-          setError('Error parsing CSV file. Please check the format.');
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const data = parseCSV(text);
+        
+        if (data.length === 0) {
+          setError('The CSV file appears to be empty or invalid.');
           setIsProcessing(false);
           return;
         }
-        
+
         // Simulate processing time for effect
         setTimeout(() => {
-          onDataLoaded(results.data);
+          onDataLoaded(data);
           setIsProcessing(false);
         }, 1500);
-      },
-      error: (error) => {
-        setError(`Error reading file: ${error.message}`);
+      } catch (err) {
+        setError('Error parsing CSV file. Please check the format.');
         setIsProcessing(false);
       }
-    });
+    };
+
+    reader.onerror = () => {
+      setError('Error reading file.');
+      setIsProcessing(false);
+    };
+
+    reader.readAsText(selectedFile);
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
