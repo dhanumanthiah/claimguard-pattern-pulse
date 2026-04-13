@@ -3,68 +3,91 @@
 import React, { useState, useMemo } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line
+  LineChart, Line, Cell
 } from 'recharts';
-import { AlertTriangle, CheckCircle, DollarSign, Activity, Search, Filter } from 'lucide-react';
+import { AlertTriangle, CheckCircle, DollarSign, Activity, Search, Users } from 'lucide-react';
 
 interface DashboardProps {
-  data: any[];
+  data: {
+    claims: any[];
+    members: any[];
+  };
 }
 
 export default function Dashboard({ data }: DashboardProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
 
-  // Anomaly Detection Logic (Frontend Simulation)
+  // Anomaly Detection Logic (Frontend Simulation using BOTH datasets)
   const processedData = useMemo(() => {
-    if (!data || data.length === 0) return [];
+    const { claims, members } = data;
+    if (!claims || claims.length === 0) return [];
 
-    // Calculate baseline metrics for anomaly detection
-    const amounts = data.map(row => parseFloat(row.ClaimAmount || row.amount || row.Amount || 0)).filter(val => !isNaN(val));
+    // 1. Create a lookup map for members to easily join data
+    const memberMap = new Map();
+    members?.forEach(m => {
+      // Try to find a common ID field (MemberID, member_id, PatientID, id, etc.)
+      const id = m.MemberID || m.member_id || m.PatientID || m.id || m.Member_ID;
+      if (id) memberMap.set(String(id), m);
+    });
+
+    // 2. Calculate baseline metrics for claims
+    const amounts = claims.map(row => parseFloat(row.ClaimAmount || row.amount || row.Amount || row.BilledAmount || 0)).filter(val => !isNaN(val));
     const avgAmount = amounts.reduce((a, b) => a + b, 0) / (amounts.length || 1);
     const stdDev = Math.sqrt(amounts.reduce((sq, n) => sq + Math.pow(n - avgAmount, 2), 0) / (amounts.length || 1));
-    
-    // Threshold for anomaly (e.g., > 2 standard deviations)
     const threshold = avgAmount + (stdDev * 2);
 
-    return data.map((row, index) => {
-      const amount = parseFloat(row.ClaimAmount || row.amount || row.Amount || 0);
-      const provider = row.Provider || row.provider || 'Unknown';
-      const diagnosis = row.DiagnosisCode || row.diagnosis || 'Unknown';
+    // 3. Process claims and detect anomalies
+    return claims.map((row, index) => {
+      const amount = parseFloat(row.ClaimAmount || row.amount || row.Amount || row.BilledAmount || 0);
+      const provider = row.Provider || row.provider || row.ProviderName || 'Unknown';
+      const diagnosis = row.DiagnosisCode || row.diagnosis || row.Diagnosis || 'Unknown';
+      const memberId = String(row.MemberID || row.member_id || row.PatientID || row.Member_ID || 'Unknown');
       
-      // Simple rule-based anomaly detection for demonstration
+      // Join member data
+      const memberInfo = memberMap.get(memberId) || {};
+      const memberAge = parseInt(memberInfo.Age || memberInfo.age || '0');
+      const memberGender = memberInfo.Gender || memberInfo.gender || 'Unknown';
+      const memberName = memberInfo.Name || memberInfo.name || memberInfo.FullName || `Member ${memberId}`;
+
       let isAnomaly = false;
       let anomalyReason = '';
-      let riskScore = Math.floor(Math.random() * 30); // Base risk 0-30
+      let riskScore = Math.floor(Math.random() * 20); // Base risk 0-20
 
       // Rule 1: Unusually high amount
       if (amount > threshold) {
         isAnomaly = true;
         anomalyReason = 'Unusually high claim amount';
-        riskScore += 60;
+        riskScore += 50;
       }
       
-      // Rule 2: Specific high-risk diagnosis codes (simulated)
-      if (['E11.9', 'I10', 'J44.9'].includes(diagnosis) && amount > avgAmount * 1.5) {
+      // Rule 2: Specific high-risk diagnosis codes
+      if (['E11.9', 'I10', 'J44.9', 'C34.9'].includes(diagnosis) && amount > avgAmount * 1.5) {
         isAnomaly = true;
-        anomalyReason = anomalyReason ? `${anomalyReason}, High-risk diagnosis pattern` : 'High-risk diagnosis pattern';
-        riskScore += 40;
+        anomalyReason = anomalyReason ? `${anomalyReason}, High-risk diagnosis` : 'High-risk diagnosis pattern';
+        riskScore += 30;
       }
 
-      // Rule 3: Flagged providers (simulated)
-      if (provider.includes('Clinic X') || provider.includes('Dr. Smith')) {
-         // Just a simulation rule
-         riskScore += 20;
-         if (riskScore > 75) {
-           isAnomaly = true;
-           anomalyReason = anomalyReason || 'Suspicious provider pattern';
-         }
+      // Rule 3: Cross-reference anomaly (Age vs Diagnosis/Amount)
+      // Example: High claim amount for very young or very old patients without specific chronic codes
+      if (memberAge > 0) {
+        if ((memberAge < 5 || memberAge > 80) && amount > avgAmount * 2) {
+          isAnomaly = true;
+          anomalyReason = anomalyReason ? `${anomalyReason}, Age/Amount mismatch` : 'Age/Amount mismatch detected';
+          riskScore += 40;
+        }
       }
 
-      // Ensure risk score is capped at 99
+      // Rule 4: Missing member data (Orphan claim)
+      if (!memberMap.has(memberId) && memberId !== 'Unknown') {
+        isAnomaly = true;
+        anomalyReason = anomalyReason ? `${anomalyReason}, Invalid Member ID` : 'Invalid Member ID (Not found in Member Data)';
+        riskScore += 60;
+      }
+
       riskScore = Math.min(riskScore, 99);
 
-      // If it's marked as anomaly in the source data, respect that
+      // Respect source data flags if present
       if (row.IsAnomaly === 'Yes' || row.is_anomaly === true || row.anomaly === 1) {
         isAnomaly = true;
         riskScore = Math.max(riskScore, 85);
@@ -72,16 +95,18 @@ export default function Dashboard({ data }: DashboardProps) {
       }
 
       return {
-        id: row.ClaimID || row.id || `CLM-${10000 + index}`,
-        date: row.Date || row.date || new Date(Date.now() - Math.floor(Math.random() * 10000000000)).toISOString().split('T')[0],
-        provider: provider,
-        diagnosis: diagnosis,
+        id: row.ClaimID || row.id || row.Claim_ID || `CLM-${10000 + index}`,
+        date: row.Date || row.date || row.ServiceDate || new Date(Date.now() - Math.floor(Math.random() * 10000000000)).toISOString().split('T')[0],
+        provider,
+        diagnosis,
         amount: isNaN(amount) ? 0 : amount,
+        memberId,
+        memberName,
+        memberAge,
         isAnomaly,
         anomalyReason,
         riskScore,
         status: isAnomaly ? 'Review Required' : 'Approved',
-        originalData: row
       };
     });
   }, [data]);
@@ -98,13 +123,13 @@ export default function Dashboard({ data }: DashboardProps) {
       anomalies,
       anomalyRate: total > 0 ? ((anomalies / total) * 100).toFixed(1) : '0',
       totalAmount,
-      anomalyAmount
+      anomalyAmount,
+      totalMembers: data.members?.length || 0
     };
-  }, [processedData]);
+  }, [processedData, data.members]);
 
   // Prepare Chart Data
   const chartData = useMemo(() => {
-    // Group by date for trend line
     const dateMap = new Map();
     processedData.forEach(d => {
       const date = d.date;
@@ -120,9 +145,8 @@ export default function Dashboard({ data }: DashboardProps) {
     
     const trendData = Array.from(dateMap.values())
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .slice(-10); // Last 10 days
+      .slice(-10);
 
-    // Provider risk distribution
     const providerMap = new Map();
     processedData.filter(d => d.isAnomaly).forEach(d => {
       providerMap.set(d.provider, (providerMap.get(d.provider) || 0) + 1);
@@ -142,6 +166,7 @@ export default function Dashboard({ data }: DashboardProps) {
       const matchesSearch = 
         item.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.provider.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.memberName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.diagnosis.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesFilter = 
@@ -158,49 +183,46 @@ export default function Dashboard({ data }: DashboardProps) {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 text-sm font-medium">Total Claims</h3>
-            <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-              <Activity size={20} className="text-blue-600" />
-            </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-gray-500 text-xs font-medium uppercase tracking-wider">Total Claims</h3>
+            <Activity size={16} className="text-blue-600" />
           </div>
-          <p className="text-3xl font-bold text-gray-800">{stats.total.toLocaleString()}</p>
-          <p className="text-sm text-gray-500 mt-2">Processed records</p>
+          <p className="text-2xl font-bold text-gray-800">{stats.total.toLocaleString()}</p>
         </div>
 
-        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 text-sm font-medium">Detected Anomalies</h3>
-            <div className="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center">
-              <AlertTriangle size={20} className="text-red-600" />
-            </div>
+        <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-gray-500 text-xs font-medium uppercase tracking-wider">Members</h3>
+            <Users size={16} className="text-indigo-600" />
           </div>
-          <p className="text-3xl font-bold text-red-600">{stats.anomalies.toLocaleString()}</p>
-          <p className="text-sm text-red-500 mt-2 font-medium">{stats.anomalyRate}% of total claims</p>
+          <p className="text-2xl font-bold text-gray-800">{stats.totalMembers.toLocaleString()}</p>
         </div>
 
-        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 text-sm font-medium">Total Value</h3>
-            <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
-              <DollarSign size={20} className="text-green-600" />
-            </div>
+        <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-gray-500 text-xs font-medium uppercase tracking-wider">Anomalies</h3>
+            <AlertTriangle size={16} className="text-red-600" />
           </div>
-          <p className="text-3xl font-bold text-gray-800">${stats.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-          <p className="text-sm text-gray-500 mt-2">Across all claims</p>
+          <p className="text-2xl font-bold text-red-600">{stats.anomalies.toLocaleString()}</p>
+          <p className="text-xs text-red-500 mt-1 font-medium">{stats.anomalyRate}% rate</p>
         </div>
 
-        <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-gray-500 text-sm font-medium">Value at Risk</h3>
-            <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
-              <AlertTriangle size={20} className="text-orange-600" />
-            </div>
+        <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-gray-500 text-xs font-medium uppercase tracking-wider">Total Value</h3>
+            <DollarSign size={16} className="text-green-600" />
           </div>
-          <p className="text-3xl font-bold text-orange-600">${stats.anomalyAmount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-          <p className="text-sm text-orange-500 mt-2 font-medium">Requires investigation</p>
+          <p className="text-2xl font-bold text-gray-800">${(stats.totalAmount/1000).toFixed(1)}k</p>
+        </div>
+
+        <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-gray-500 text-xs font-medium uppercase tracking-wider">Risk Value</h3>
+            <AlertTriangle size={16} className="text-orange-600" />
+          </div>
+          <p className="text-2xl font-bold text-orange-600">${(stats.anomalyAmount/1000).toFixed(1)}k</p>
         </div>
       </div>
 
@@ -252,14 +274,14 @@ export default function Dashboard({ data }: DashboardProps) {
       {/* Data Table */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <h3 className="text-lg font-semibold text-gray-800">Detailed Claims Analysis</h3>
+          <h3 className="text-lg font-semibold text-gray-800">Cross-Referenced Claims Analysis</h3>
           
           <div className="flex items-center gap-3">
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input 
                 type="text" 
-                placeholder="Search claims..." 
+                placeholder="Search claims or members..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0D7377]/20 focus:border-[#0D7377] w-full sm:w-64"
@@ -283,7 +305,7 @@ export default function Dashboard({ data }: DashboardProps) {
             <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-200">
               <tr>
                 <th className="px-6 py-4">Claim ID</th>
-                <th className="px-6 py-4">Date</th>
+                <th className="px-6 py-4">Member Info</th>
                 <th className="px-6 py-4">Provider</th>
                 <th className="px-6 py-4">Diagnosis</th>
                 <th className="px-6 py-4 text-right">Amount</th>
@@ -295,7 +317,10 @@ export default function Dashboard({ data }: DashboardProps) {
               {filteredData.slice(0, 20).map((row, idx) => (
                 <tr key={row.id} className="hover:bg-gray-50 transition-colors row-animate" style={{ animationDelay: `${idx * 0.05}s` }}>
                   <td className="px-6 py-4 font-medium text-gray-900">{row.id}</td>
-                  <td className="px-6 py-4 text-gray-500">{row.date}</td>
+                  <td className="px-6 py-4">
+                    <div className="font-medium text-gray-800">{row.memberName}</div>
+                    <div className="text-xs text-gray-500">ID: {row.memberId} {row.memberAge ? `• Age: ${row.memberAge}` : ''}</div>
+                  </td>
                   <td className="px-6 py-4 text-gray-700">{row.provider}</td>
                   <td className="px-6 py-4 text-gray-500">{row.diagnosis}</td>
                   <td className="px-6 py-4 text-right font-medium text-gray-900">
@@ -333,7 +358,7 @@ export default function Dashboard({ data }: DashboardProps) {
                       </div>
                     )}
                     {row.anomalyReason && (
-                      <p className="text-[10px] text-red-500 mt-1 max-w-[150px] truncate" title={row.anomalyReason}>
+                      <p className="text-[10px] text-red-500 mt-1 max-w-[180px] truncate" title={row.anomalyReason}>
                         {row.anomalyReason}
                       </p>
                     )}

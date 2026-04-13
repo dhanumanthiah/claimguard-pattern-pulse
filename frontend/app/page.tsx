@@ -9,10 +9,10 @@ import Dashboard from '../components/Dashboard';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('upload');
-  const [claimsData, setClaimsData] = useState<any[] | null>(null);
+  const [appData, setAppData] = useState<{ claims: any[]; members: any[] } | null>(null);
 
-  const handleDataLoaded = (data: any[]) => {
-    setClaimsData(data);
+  const handleDataLoaded = (data: { claims: any[]; members: any[] }) => {
+    setAppData(data);
     setActiveTab('dashboard');
   };
 
@@ -34,7 +34,7 @@ export default function App() {
               </h1>
               <p className="text-gray-500 mt-1">
                 {activeTab === 'dashboard' && 'Overview of claims processing and detected anomalies.'}
-                {activeTab === 'upload' && 'Upload synthetic claims data for AI analysis.'}
+                {activeTab === 'upload' && 'Upload synthetic claims and member data for AI analysis.'}
                 {activeTab === 'anomalies' && 'Detailed view of flagged claims requiring review.'}
                 {activeTab === 'reports' && 'Generate and export compliance and audit reports.'}
               </p>
@@ -48,8 +48,8 @@ export default function App() {
               )}
 
               {activeTab === 'dashboard' && (
-                claimsData ? (
-                  <Dashboard data={claimsData} />
+                appData ? (
+                  <Dashboard data={appData} />
                 ) : (
                   <div className="text-center py-20 bg-white rounded-2xl shadow-sm border border-gray-100">
                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -58,7 +58,7 @@ export default function App() {
                       </svg>
                     </div>
                     <h3 className="text-lg font-medium text-gray-900 mb-2">No Data Available</h3>
-                    <p className="text-gray-500 mb-6">Please upload a CSV file to view the dashboard analytics.</p>
+                    <p className="text-gray-500 mb-6">Please upload both Claims and Member CSV files to view the dashboard analytics.</p>
                     <button 
                       onClick={() => setActiveTab('upload')}
                       className="bg-[#0D7377] text-white px-6 py-2 rounded-lg font-medium hover:bg-[#0D7377]/90 transition-colors"
