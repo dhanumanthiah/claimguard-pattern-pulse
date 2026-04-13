@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState } from 'react';
-import Navbar from './components/layout/Navbar';
-import Sidebar from './components/layout/Sidebar';
-import Footer from './components/layout/Footer';
-import FileUpload from './components/FileUpload';
-import Dashboard from './components/Dashboard';
+import Navbar from '../components/layout/Navbar';
+import Sidebar from '../components/layout/Sidebar';
+import Footer from '../components/layout/Footer';
+import FileUpload from '../components/FileUpload';
+import Dashboard from '../components/Dashboard';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('upload');
