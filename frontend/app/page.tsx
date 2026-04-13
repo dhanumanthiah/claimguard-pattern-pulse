@@ -1,14 +1,124 @@
-"use client";
-
-import React, { useState, useEffect, useRef } from 'react';
-import { CLAIMS } from '../lib/data';
+import React, { useState, useEffect } from 'react';
 import { 
   Database, AlertTriangle, LayoutDashboard, ChevronRight, 
-  CheckCircle, XCircle, AlertCircle, MapPin, Clock, User, FileText, ShieldAlert
+  CheckCircle, MapPin, Clock, ShieldAlert
 } from 'lucide-react';
 
-// --- CUSTOM HOOKS ---
+// --- HARDCODED DATA ---
+const CLAIMS = [
+  {
+    id: "CG-2024-00142",
+    memberId: "M-88421",
+    memberName: "Robert Harmon",
+    age: 71, gender: "M",
+    providerId: "PRV-3301",
+    providerName: "Dr. Sarah Nguyen",
+    specialty: "Primary Care",
+    facility: "Riverside Family Medicine",
+    city: "Austin", state: "TX",
+    serviceDate: "2024-10-03",
+    serviceTime: "10:00 AM",
+    procedureCode: "99213",
+    procedureDesc: "Office Visit - Established Patient, Low Complexity",
+    diagnosisCode: "Z00.00",
+    diagnosisDesc: "Routine General Medical Examination",
+    anomalyType: "NONE",
+    riskLevel: "LOW",
+    status: "AUTO-CLEARED",
+    flagReason: null,
+    signal: "No anomalies detected",
+    memberHistory: []
+  },
+  {
+    id: "CG-2024-00587A",
+    memberId: "M-44219",
+    memberName: "Gloria Esteves",
+    age: 68, gender: "F",
+    providerId: "PRV-1142",
+    providerName: "Dr. James Polk",
+    specialty: "Cardiology",
+    facility: "Lakewood Heart Center",
+    city: "Denver", state: "CO",
+    serviceDate: "2024-11-14",
+    serviceTime: "9:00 AM",
+    procedureCode: "93000",
+    procedureDesc: "Electrocardiogram (ECG)",
+    diagnosisCode: "I10",
+    diagnosisDesc: "Essential Hypertension",
+    anomalyType: "LOCATION CONFLICT",
+    riskLevel: "HIGH",
+    riskColor: "red",
+    status: "PENDING REVIEW",
+    signal: "Same-day location impossibility",
+    pairedClaimId: "CG-2024-00587B",
+    distanceMiles: 1698,
+    location1: { label: "9:00 AM — Lakewood Heart Center", city: "Denver", state: "CO", lat: 39.7, lng: -104.9 },
+    location2: { label: "11:30 AM — Suncoast Medical Group", city: "Tampa", state: "FL", lat: 27.9, lng: -82.4 },
+    flagReason: "Member M-44219 has two claims on the same date from facilities 1,698 miles apart with a 2.5-hour service window. Physical presence at both locations is not clinically possible. Flagged for reviewer investigation.",
+    memberHistory: []
+  },
+  {
+    id: "CG-2024-00587B",
+    memberId: "M-44219",
+    memberName: "Gloria Esteves",
+    age: 68, gender: "F",
+    providerId: "PRV-2278",
+    providerName: "Dr. Anita Reyes",
+    specialty: "Internal Medicine",
+    facility: "Suncoast Medical Group",
+    city: "Tampa", state: "FL",
+    serviceDate: "2024-11-14",
+    serviceTime: "11:30 AM",
+    procedureCode: "99214",
+    procedureDesc: "Office Visit - Established Patient, Moderate Complexity",
+    diagnosisCode: "I10",
+    diagnosisDesc: "Essential Hypertension",
+    anomalyType: "LOCATION CONFLICT",
+    riskLevel: "HIGH",
+    riskColor: "red",
+    status: "PENDING REVIEW",
+    signal: "Paired location conflict claim",
+    pairedClaimId: "CG-2024-00587A",
+    flagReason: "Paired claim to CG-2024-00587A. Same member, same date, second location Tampa FL. Reviewed together as a location conflict cluster.",
+    memberHistory: []
+  },
+  {
+    id: "CG-2024-00934",
+    memberId: "M-61033",
+    memberName: "David Kwan",
+    age: 74, gender: "M",
+    providerId: "PRV-4455",
+    providerName: "Dr. Marcus Bell",
+    specialty: "Endocrinology",
+    facility: "Pinecrest Specialty Clinic",
+    city: "Nashville", state: "TN",
+    serviceDate: "2024-12-02",
+    serviceTime: "2:15 PM",
+    procedureCode: "99215",
+    procedureDesc: "Office Visit - Established Patient, High Complexity",
+    diagnosisCode: "E11.649",
+    diagnosisDesc: "Type 2 Diabetes with Hypoglycemia (HCC 18)",
+    anomalyType: "HCC ANOMALY",
+    riskLevel: "HIGH",
+    riskColor: "amber",
+    status: "PENDING REVIEW",
+    signal: "Unsupported HCC 18 submission",
+    providerHCCRate: "4.2x above peer average",
+    flagReason: "Diagnosis code E11.649 (Type 2 Diabetes with Hypoglycemia) submitted for member M-61033 is not supported by 24 months of longitudinal claim history. No prior diabetes diagnosis, A1C labs, or endocrinology encounters on record. Submitting provider HCC 18/19 rate is 4.2x above peer cohort average. Flagged for medical record review before encounter submission.",
+    memberHistory: [
+      { date: "2022-11-08", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "Z00.00", desc: "Routine General Medical Exam", flagged: false },
+      { date: "2023-02-14", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "Z12.11", desc: "Screening for Colon Cancer", flagged: false },
+      { date: "2023-06-21", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "Z00.00", desc: "Routine General Medical Exam", flagged: false },
+      { date: "2023-09-05", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "R73.09", desc: "Other Abnormal Glucose (borderline - NOT HCC)", flagged: false },
+      { date: "2023-11-30", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "Z00.00", desc: "Routine General Medical Exam", flagged: false },
+      { date: "2024-03-12", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "Z12.11", desc: "Screening for Colon Cancer", flagged: false },
+      { date: "2024-07-18", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "Z00.00", desc: "Routine General Medical Exam", flagged: false },
+      { date: "2024-12-02", provider: "Dr. Marcus Bell - Endocrinology", code: "99215", diagnosis: "E11.649", desc: "Type 2 Diabetes with Hypoglycemia (HCC 18) - FLAGGED", flagged: true }
+    ]
+  }
+];
 
+// --- CUSTOM HOOKS ---
 function useTypingEffect(text: string, speed = 18) {
   const [displayedText, setDisplayedText] = useState('');
   const [isComplete, setIsComplete] = useState(false);
@@ -56,7 +166,6 @@ function useCountUp(end: number, duration = 1000) {
 }
 
 // --- MAIN APP COMPONENT ---
-
 export default function ClaimGuardApp() {
   const [currentRoute, setCurrentRoute] = useState('/ingestion');
   const [decisions, setDecisions] = useState<{claimId: string, decision: string, timestamp: string}[]>([]);
@@ -87,65 +196,59 @@ export default function ClaimGuardApp() {
     valid: decisions.filter(d => d.decision === 'Mark as Valid').length
   };
 
-  // --- LAYOUT COMPONENTS ---
+  // --- INLINE STYLES FOR SINGLE FILE PORTABILITY ---
+  const styles = `
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    .claimguard-app {
+      font-family: 'Inter', sans-serif;
+      background-color: #F4F7FB;
+      color: #1E293B;
+    }
+    
+    .typing-cursor::after {
+      content: '|';
+      animation: blink 1s step-start infinite;
+    }
+    
+    .typing-cursor-hidden::after {
+      content: '';
+      display: none;
+    }
 
-  const Navbar = () => (
-    <nav className="fixed top-0 left-0 right-0 h-[56px] bg-[#1B3A6B] flex items-center justify-between px-6 z-50">
-      <div className="text-white font-bold text-[18px]">ClaimGuard Pattern Pulse</div>
-      <div className="bg-white/10 text-[#CADCFC] px-3 py-1 rounded-full text-xs font-medium">
-        Demo Mode
-      </div>
-    </nav>
-  );
+    .donut-chart {
+      background: conic-gradient(
+        #DC2626 0% 50%,
+        #F59E0B 50% 75%,
+        #059669 75% 100%
+      );
+      border-radius: 50%;
+    }
 
-  const Sidebar = () => {
-    const navItems = [
-      { id: '/ingestion', label: 'Ingestion', icon: Database },
-      { id: '/anomaly-report', label: 'Anomaly Report', icon: AlertTriangle },
-      { id: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    ];
+    @keyframes blink {
+      50% { opacity: 0; }
+    }
 
-    return (
-      <aside className="fixed top-[56px] left-0 w-[240px] h-[calc(100vh-56px)] bg-[#1B3A6B] py-6 z-40">
-        <div className="space-y-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = currentRoute === item.id || currentRoute.startsWith(item.id + '/');
-            return (
-              <button
-                key={item.id}
-                onClick={() => navigate(item.id)}
-                className={`w-full flex items-center gap-3 px-6 py-3 text-sm transition-colors ${
-                  isActive 
-                    ? 'bg-[#0D7377]/30 text-white border-l-[3px] border-[#0D7377]' 
-                    : 'text-white/70 hover:bg-white/5 hover:text-white border-l-[3px] border-transparent'
-                }`}
-              >
-                <Icon size={18} />
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-      </aside>
-    );
-  };
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
 
-  const Footer = () => (
-    <footer className="bg-[#1B3A6B] text-[#CADCFC] text-[11px] text-center py-3 mt-auto">
-      ClaimGuard Pattern Pulse | AI PM Bootcamp — Marily Nika | Demo Day 2026
-    </footer>
-  );
+    .animate-fade-in-up {
+      animation: fadeInUp 0.4s ease forwards;
+      opacity: 0;
+    }
 
-  const Toast = () => {
-    if (!toast) return null;
-    return (
-      <div className="fixed top-20 right-6 bg-[#059669] text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50 animate-fade-in-up">
-        <CheckCircle size={18} />
-        <span className="text-sm font-medium">{toast}</span>
-      </div>
-    );
-  };
+    @keyframes pulse-teal {
+      0% { box-shadow: 0 0 0 0 rgba(13, 115, 119, 0.4); }
+      70% { box-shadow: 0 0 0 10px rgba(13, 115, 119, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(13, 115, 119, 0); }
+    }
+
+    .animate-pulse-teal {
+      animation: pulse-teal 2s infinite;
+    }
+  `;
 
   // --- SCREEN COMPONENTS ---
 
@@ -360,7 +463,6 @@ export default function ClaimGuardApp() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* LEFT COLUMN */}
           <div className="space-y-6">
             <div className="bg-white rounded-[10px] border border-[#E2E8F0] p-6 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-2 bg-[#DC2626]"></div>
@@ -412,22 +514,18 @@ export default function ClaimGuardApp() {
               </h3>
               <svg viewBox="0 0 400 200" className="w-full h-48 bg-[#F4F7FB] rounded-lg border border-[#E2E8F0]">
                 <path d="M 100 100 Q 200 50 300 120" fill="none" stroke="#DC2626" strokeWidth="2" strokeDasharray="5,5" />
-                
                 <circle cx="100" cy="100" r="6" fill="#1B3A6B" />
                 <text x="100" y="80" textAnchor="middle" className="text-[11px] font-semibold fill-[#1E293B]">Denver, CO</text>
                 <text x="100" y="120" textAnchor="middle" className="text-[10px] fill-[#64748B]">9:00 AM</text>
-                
                 <circle cx="300" cy="120" r="6" fill="#DC2626" />
                 <text x="300" y="100" textAnchor="middle" className="text-[11px] font-semibold fill-[#1E293B]">Tampa, FL</text>
                 <text x="300" y="140" textAnchor="middle" className="text-[10px] fill-[#64748B]">11:30 AM</text>
-                
                 <rect x="160" y="60" width="80" height="20" rx="10" fill="white" stroke="#DC2626" strokeWidth="1" />
                 <text x="200" y="74" textAnchor="middle" className="text-[10px] font-bold fill-[#DC2626]">1,698 miles</text>
               </svg>
             </div>
           </div>
 
-          {/* RIGHT COLUMN */}
           <div className="space-y-6">
             <div className="bg-white rounded-[10px] border border-[#E2E8F0] shadow-sm overflow-hidden">
               <div className="bg-[#0D7377] px-6 py-4">
@@ -478,7 +576,6 @@ export default function ClaimGuardApp() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* LEFT COLUMN */}
           <div className="space-y-6">
             <div className="bg-white rounded-[10px] border border-[#E2E8F0] p-6 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-2 bg-[#F59E0B]"></div>
@@ -538,7 +635,6 @@ export default function ClaimGuardApp() {
             </div>
           </div>
 
-          {/* RIGHT COLUMN */}
           <div className="space-y-6">
             <div className="bg-white rounded-[10px] border border-[#E2E8F0] shadow-sm overflow-hidden">
               <div className="bg-[#0D7377] px-6 py-4">
@@ -661,7 +757,6 @@ export default function ClaimGuardApp() {
                   {decisions.map((d, i) => {
                     const isEscalate = d.decision === 'Escalate to SIU';
                     const isError = d.decision === 'Flag as Data Error';
-                    const isValid = d.decision === 'Mark as Valid';
                     
                     return (
                       <div key={i} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
@@ -698,13 +793,42 @@ export default function ClaimGuardApp() {
     );
   };
 
-  // --- RENDERER ---
-
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
+    <div className="claimguard-app min-h-screen flex flex-col">
+      <style dangerouslySetInnerHTML={{ __html: styles }} />
+      <nav className="fixed top-0 left-0 right-0 h-[56px] bg-[#1B3A6B] flex items-center justify-between px-6 z-50">
+        <div className="text-white font-bold text-[18px]">ClaimGuard Pattern Pulse</div>
+        <div className="bg-white/10 text-[#CADCFC] px-3 py-1 rounded-full text-xs font-medium">
+          Demo Mode
+        </div>
+      </nav>
       <div className="flex flex-1">
-        <Sidebar />
+        <aside className="fixed top-[56px] left-0 w-[240px] h-[calc(100vh-56px)] bg-[#1B3A6B] py-6 z-40">
+          <div className="space-y-1">
+            {[
+              { id: '/ingestion', label: 'Ingestion', icon: Database },
+              { id: '/anomaly-report', label: 'Anomaly Report', icon: AlertTriangle },
+              { id: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            ].map((item) => {
+              const Icon = item.icon;
+              const isActive = currentRoute === item.id || currentRoute.startsWith(item.id + '/');
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => navigate(item.id)}
+                  className={`w-full flex items-center gap-3 px-6 py-3 text-sm transition-colors ${
+                    isActive 
+                      ? 'bg-[#0D7377]/30 text-white border-l-[3px] border-[#0D7377]' 
+                      : 'text-white/70 hover:bg-white/5 hover:text-white border-l-[3px] border-transparent'
+                  }`}
+                >
+                  <Icon size={18} />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </aside>
         <main className="flex-1 ml-[240px] mt-[56px] p-[28px] bg-[#F4F7FB] min-h-[calc(100vh-56px)]">
           {currentRoute === '/ingestion' && <IngestionScreen />}
           {currentRoute === '/anomaly-report' && <AnomalyReportScreen />}
@@ -713,8 +837,15 @@ export default function ClaimGuardApp() {
           {currentRoute === '/dashboard' && <DashboardScreen />}
         </main>
       </div>
-      <Footer />
-      <Toast />
+      <footer className="bg-[#1B3A6B] text-[#CADCFC] text-[11px] text-center py-3 mt-auto z-50 relative">
+        ClaimGuard Pattern Pulse | AI PM Bootcamp — Marily Nika | Demo Day 2026
+      </footer>
+      {toast && (
+        <div className="fixed top-20 right-6 bg-[#059669] text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50 animate-fade-in-up">
+          <CheckCircle size={18} />
+          <span className="text-sm font-medium">{toast}</span>
+        </div>
+      )}
     </div>
   );
 }
