@@ -4,150 +4,90 @@ import React, { useState } from 'react';
 import Navbar from './components/layout/Navbar';
 import Sidebar from './components/layout/Sidebar';
 import Footer from './components/layout/Footer';
-import FileUpload from './components/dashboard/FileUpload';
-import StatCard from './components/dashboard/StatCard';
-import DataTable from './components/dashboard/DataTable';
-import Charts from './components/dashboard/Charts';
-import { parseCSV, detectAnomalies } from './lib/anomalyDetection';
-import { FileText, AlertTriangle, CheckCircle, DollarSign } from 'lucide-react';
+import FileUpload from './components/FileUpload';
+import Dashboard from './components/Dashboard';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [data, setData] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState('upload');
+  const [claimsData, setClaimsData] = useState<any[] | null>(null);
 
-  const handleDataLoaded = (csvText: string) => {
-    const parsedData = parseCSV(csvText);
-    const { processedData, stats: newStats } = detectAnomalies(parsedData);
-    setData(processedData);
-    setStats(newStats);
-    setActiveTab('dashboard'); // Switch to dashboard view after upload
+  const handleDataLoaded = (data: any[]) => {
+    setClaimsData(data);
+    setActiveTab('dashboard');
   };
 
   return (
-    <div className="min-h-screen bg-[#F4F7FB] font-sans text-[#1E293B]">
+    <div className="min-h-screen bg-[#F4F7FB] flex flex-col">
       <Navbar />
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       
-      <main className="ml-[240px] mt-[56px] p-8 min-h-[calc(100vh-56px)] flex flex-col">
-        <div className="flex-grow max-w-7xl mx-auto w-full">
-          
-          {/* Header Section */}
-          <div className="mb-8 row-animate">
-            <h1 className="text-3xl font-bold text-[#1B3A6B] tracking-tight">
-              {activeTab === 'dashboard' && 'Dashboard Overview'}
-              {activeTab === 'upload' && 'Data Ingestion'}
-              {activeTab === 'anomalies' && 'Anomaly Investigation'}
-              {activeTab === 'reports' && 'System Reports'}
-            </h1>
-            <p className="text-slate-500 mt-2">
-              {activeTab === 'dashboard' && 'Monitor and analyze claims data for potential fraud and anomalies.'}
-              {activeTab === 'upload' && 'Upload new synthetic claims data batches for AI analysis.'}
-              {activeTab === 'anomalies' && 'Deep dive into flagged claims and investigate potential issues.'}
-              {activeTab === 'reports' && 'Generate and export compliance and audit reports.'}
-            </p>
-          </div>
-
-          {/* Content Area */}
-          {activeTab === 'upload' && (
-            <div className="row-animate" style={{ animationDelay: '0.1s' }}>
-              <FileUpload onDataLoaded={handleDataLoaded} />
-            </div>
-          )}
-
-          {(activeTab === 'dashboard' || activeTab === 'anomalies') && !stats && (
-            <div className="bg-white rounded-2xl p-12 text-center border border-[#E2E8F0] shadow-sm row-animate">
-              <div className="w-20 h-20 bg-[#1B3A6B]/5 rounded-full flex items-center justify-center mx-auto mb-6">
-                <FileText size={40} className="text-[#1B3A6B]/40" />
-              </div>
-              <h2 className="text-2xl font-bold text-slate-700 mb-3">No Data Available</h2>
-              <p className="text-slate-500 max-w-md mx-auto mb-8">
-                Please upload a synthetic claims dataset to begin the anomaly detection process and view your dashboard.
+      <div className="flex flex-1 pt-14">
+        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+        
+        <main className="flex-1 ml-[240px] p-8 overflow-y-auto">
+          <div className="max-w-7xl mx-auto">
+            <header className="mb-8">
+              <h1 className="text-3xl font-bold text-[#1B3A6B] tracking-tight">
+                {activeTab === 'dashboard' && 'Analytics Dashboard'}
+                {activeTab === 'upload' && 'Data Ingestion'}
+                {activeTab === 'anomalies' && 'Anomaly Investigation'}
+                {activeTab === 'reports' && 'System Reports'}
+              </h1>
+              <p className="text-gray-500 mt-1">
+                {activeTab === 'dashboard' && 'Overview of claims processing and detected anomalies.'}
+                {activeTab === 'upload' && 'Upload synthetic claims data for AI analysis.'}
+                {activeTab === 'anomalies' && 'Detailed view of flagged claims requiring review.'}
+                {activeTab === 'reports' && 'Generate and export compliance and audit reports.'}
               </p>
-              <button 
-                onClick={() => setActiveTab('upload')}
-                className="bg-[#0D7377] hover:bg-[#0A5A5D] text-white px-8 py-3 rounded-xl font-semibold transition-all shadow-lg shadow-[#0D7377]/30 hover:shadow-xl hover:-translate-y-0.5"
-              >
-                Go to Upload
-              </button>
-            </div>
-          )}
+            </header>
 
-          {activeTab === 'dashboard' && stats && (
-            <div className="space-y-8">
-              {/* Stats Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 row-animate" style={{ animationDelay: '0.1s' }}>
-                <StatCard 
-                  title="Total Claims Processed" 
-                  value={stats.totalClaims.toLocaleString()} 
-                  icon={FileText} 
-                  color="blue"
-                  trend={{ value: 12.5, isPositive: true }}
-                />
-                <StatCard 
-                  title="Anomalies Detected" 
-                  value={stats.anomalyCount.toLocaleString()} 
-                  subtitle={`${stats.anomalyRate}% of total claims`}
-                  icon={AlertTriangle} 
-                  color="red"
-                  trend={{ value: 4.2, isPositive: false }}
-                />
-                <StatCard 
-                  title="Clean Claims" 
-                  value={stats.cleanCount.toLocaleString()} 
-                  icon={CheckCircle} 
-                  color="teal"
-                />
-                <StatCard 
-                  title="Flagged Amount" 
-                  value={`$${stats.anomalyAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
-                  icon={DollarSign} 
-                  color="slate"
-                />
-              </div>
-
-              {/* Charts */}
-              <div className="row-animate" style={{ animationDelay: '0.2s' }}>
-                <Charts stats={stats} />
-              </div>
-
-              {/* Data Table Preview */}
-              <div className="row-animate" style={{ animationDelay: '0.3s' }}>
-                <div className="flex justify-between items-end mb-4">
-                  <h3 className="text-lg font-bold text-[#1B3A6B]">Recent Claims Analysis</h3>
-                  <button 
-                    onClick={() => setActiveTab('anomalies')}
-                    className="text-sm text-[#0D7377] font-medium hover:underline"
-                  >
-                    View All Data →
-                  </button>
+            <div className="min-h-[60vh]">
+              {activeTab === 'upload' && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+                  <FileUpload onDataLoaded={handleDataLoaded} />
                 </div>
-                <DataTable data={data.slice(0, 5)} />
-              </div>
-            </div>
-          )}
+              )}
 
-          {activeTab === 'anomalies' && stats && (
-            <div className="row-animate" style={{ animationDelay: '0.1s' }}>
-              <DataTable data={data} />
-            </div>
-          )}
+              {activeTab === 'dashboard' && (
+                claimsData ? (
+                  <Dashboard data={claimsData} />
+                ) : (
+                  <div className="text-center py-20 bg-white rounded-2xl shadow-sm border border-gray-100">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Data Available</h3>
+                    <p className="text-gray-500 mb-6">Please upload a CSV file to view the dashboard analytics.</p>
+                    <button 
+                      onClick={() => setActiveTab('upload')}
+                      className="bg-[#0D7377] text-white px-6 py-2 rounded-lg font-medium hover:bg-[#0D7377]/90 transition-colors"
+                    >
+                      Go to Upload
+                    </button>
+                  </div>
+                )
+              )}
 
-          {activeTab === 'reports' && (
-            <div className="bg-white rounded-2xl p-12 text-center border border-[#E2E8F0] shadow-sm row-animate">
-              <div className="w-20 h-20 bg-[#0D7377]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                <FileText size={40} className="text-[#0D7377]" />
-              </div>
-              <h2 className="text-2xl font-bold text-slate-700 mb-3">Reports Module</h2>
-              <p className="text-slate-500 max-w-md mx-auto">
-                The reporting module is currently in development. Soon you will be able to export detailed PDF and Excel reports of your anomaly findings.
-              </p>
+              {(activeTab === 'anomalies' || activeTab === 'reports') && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-50 text-blue-500 mb-4">
+                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-800 mb-2">Module Under Construction</h2>
+                  <p className="text-gray-500 max-w-md mx-auto">
+                    The {activeTab} module is currently being developed. Please check back in the next release.
+                  </p>
+                </div>
+              )}
             </div>
-          )}
-
-        </div>
-        <Footer />
-      </main>
+          </div>
+        </main>
+      </div>
+      
+      <Footer />
     </div>
   );
 }
