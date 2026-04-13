@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Database, AlertTriangle, LayoutDashboard, ChevronRight, 
-  CheckCircle, MapPin, Clock, ShieldAlert, Activity, Zap
+  CheckCircle, MapPin, Clock, ShieldAlert, Activity, Zap,
+  Upload, File, X
 } from 'lucide-react';
 
 // --- HARDCODED DATA ---
@@ -328,16 +329,23 @@ export default function ClaimGuardApp() {
   // --- SCREEN COMPONENTS ---
 
   const IngestionScreen = () => {
+    const [uploadState, setUploadState] = useState<'initial' | 'uploading' | 'loaded'>('initial');
     const [visibleRows, setVisibleRows] = useState(0);
     const [showOverlay, setShowOverlay] = useState(false);
     const [overlayState, setOverlayState] = useState<'scanning' | 'complete'>('scanning');
 
-    useEffect(() => {
-      const timers = CLAIMS.map((_, i) => 
-        setTimeout(() => setVisibleRows(prev => prev + 1), i * 200)
-      );
-      return () => timers.forEach(clearTimeout);
-    }, []);
+    // Simulated file upload handler
+    const handleSimulatedUpload = () => {
+      setUploadState('uploading');
+      setTimeout(() => {
+        setUploadState('loaded');
+        // Start row animation after "upload" completes
+        const timers = CLAIMS.map((_, i) => 
+          setTimeout(() => setVisibleRows(prev => prev + 1), i * 200)
+        );
+        return () => timers.forEach(clearTimeout);
+      }, 1500);
+    };
 
     const handleAnalyze = () => {
       setShowOverlay(true);
@@ -356,57 +364,123 @@ export default function ClaimGuardApp() {
           <div>
             <h1 className="text-3xl font-bold text-gradient-navy tracking-tight mb-1">Claims Ingestion Pipeline</h1>
             <p className="text-[#64748B] font-medium flex items-center gap-2">
-              <Database size={16} className="text-[#0D7377]" /> 4 claims loaded for AI analysis
+              <Database size={16} className="text-[#0D7377]" /> 
+              {uploadState === 'loaded' ? '4 claims loaded for AI analysis' : 'Upload datasets to begin analysis'}
             </p>
           </div>
         </div>
 
-        <div className="glass-card rounded-2xl overflow-hidden mb-10">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1000px] text-left text-sm">
-              <thead className="bg-[#1B3A6B]/5 text-[#1B3A6B] font-semibold border-b border-[#E2E8F0]/50">
-                <tr>
-                  <th className="px-6 py-5">CLAIM ID</th>
-                  <th className="px-6 py-5">MEMBER NAME</th>
-                  <th className="px-6 py-5">AGE/GENDER</th>
-                  <th className="px-6 py-5">FACILITY</th>
-                  <th className="px-6 py-5">SERVICE DATE</th>
-                  <th className="px-6 py-5">PROC CODE</th>
-                  <th className="px-6 py-5">DIAG CODE</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#E2E8F0]/50">
-                {CLAIMS.map((claim, idx) => (
-                  <tr 
-                    key={claim.id} 
-                    className={`transition-all duration-500 hover:bg-white/50 ${idx < visibleRows ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
-                  >
-                    <td className="px-6 py-5 font-bold text-[#1B3A6B]">{claim.id}</td>
-                    <td className="px-6 py-5 font-medium text-[#1E293B]">{claim.memberName}</td>
-                    <td className="px-6 py-5 text-[#64748B] bg-[#F4F7FB]/50 rounded-md m-2 inline-block px-3 py-1 mt-4">{claim.age} / {claim.gender}</td>
-                    <td className="px-6 py-5">
-                      <div className="font-medium text-[#1E293B]">{claim.facility}</div>
-                      <div className="text-[11px] text-[#64748B] uppercase tracking-wider mt-0.5">{claim.city}, {claim.state}</div>
-                    </td>
-                    <td className="px-6 py-5 text-[#64748B] font-medium">{claim.serviceDate}</td>
-                    <td className="px-6 py-5"><span className="bg-[#0D7377]/10 text-[#0D7377] px-2 py-1 rounded font-mono text-xs font-bold">{claim.procedureCode}</span></td>
-                    <td className="px-6 py-5"><span className="bg-[#1B3A6B]/10 text-[#1B3A6B] px-2 py-1 rounded font-mono text-xs font-bold">{claim.diagnosisCode}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {visibleRows === CLAIMS.length && (
-          <div className="flex justify-center animate-fade-in-up" style={{ animationDelay: '0.5s' }}>
-            <button 
-              onClick={handleAnalyze}
-              className="bg-gradient-to-r from-[#0D7377] to-[#11999E] text-white px-10 py-4 rounded-xl font-bold text-lg flex items-center gap-3 animate-pulse-teal hover:scale-105 transition-all duration-300 shadow-xl shadow-[#0D7377]/30"
+        {uploadState === 'initial' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10 animate-fade-in-up">
+            {/* Simulated Claims Upload */}
+            <div 
+              onClick={handleSimulatedUpload}
+              className="glass-card rounded-2xl p-10 border-2 border-dashed border-[#1B3A6B]/20 hover:border-[#0D7377] hover:bg-white/90 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center text-center group"
             >
-              <Zap size={20} className="fill-white" /> Run ClaimGuard AI Analysis <ChevronRight size={20} />
-            </button>
+              <div className="w-20 h-20 bg-[#1B3A6B]/5 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                <Upload size={32} className="text-[#1B3A6B] group-hover:text-[#0D7377] transition-colors" />
+              </div>
+              <h3 className="text-xl font-bold text-[#1E293B] mb-2">Upload Claims Data</h3>
+              <p className="text-[#64748B] text-sm mb-6">Drag & drop your claims CSV file here, or click to browse.</p>
+              <span className="bg-[#1B3A6B]/5 text-[#1B3A6B] px-4 py-2 rounded-lg text-sm font-bold group-hover:bg-[#0D7377] group-hover:text-white transition-colors">
+                Select File
+              </span>
+            </div>
+
+            {/* Simulated Member Upload */}
+            <div 
+              onClick={handleSimulatedUpload}
+              className="glass-card rounded-2xl p-10 border-2 border-dashed border-[#1B3A6B]/20 hover:border-[#0D7377] hover:bg-white/90 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center text-center group"
+            >
+              <div className="w-20 h-20 bg-[#1B3A6B]/5 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                <Database size={32} className="text-[#1B3A6B] group-hover:text-[#0D7377] transition-colors" />
+              </div>
+              <h3 className="text-xl font-bold text-[#1E293B] mb-2">Upload Member Data</h3>
+              <p className="text-[#64748B] text-sm mb-6">Drag & drop your member demographics CSV file here.</p>
+              <span className="bg-[#1B3A6B]/5 text-[#1B3A6B] px-4 py-2 rounded-lg text-sm font-bold group-hover:bg-[#0D7377] group-hover:text-white transition-colors">
+                Select File
+              </span>
+            </div>
           </div>
+        )}
+
+        {uploadState === 'uploading' && (
+          <div className="glass-card rounded-2xl p-16 flex flex-col items-center justify-center mb-10 animate-fade-in-up">
+            <div className="w-16 h-16 border-4 border-[#0D7377]/20 border-t-[#0D7377] rounded-full animate-spin mb-6"></div>
+            <h3 className="text-xl font-bold text-[#1E293B] mb-2">Processing Datasets...</h3>
+            <p className="text-[#64748B]">Cross-referencing claims with member history.</p>
+          </div>
+        )}
+
+        {uploadState === 'loaded' && (
+          <>
+            <div className="flex gap-4 mb-6 animate-fade-in-up">
+              <div className="bg-white/80 border border-[#059669]/30 px-4 py-3 rounded-xl flex items-center gap-3 shadow-sm">
+                <File size={20} className="text-[#059669]" />
+                <div>
+                  <p className="text-sm font-bold text-[#1E293B]">claims_batch_nov24.csv</p>
+                  <p className="text-[10px] text-[#64748B] uppercase tracking-wider">1.2 MB • Processed</p>
+                </div>
+                <CheckCircle size={16} className="text-[#059669] ml-4" />
+              </div>
+              <div className="bg-white/80 border border-[#059669]/30 px-4 py-3 rounded-xl flex items-center gap-3 shadow-sm">
+                <Database size={20} className="text-[#059669]" />
+                <div>
+                  <p className="text-sm font-bold text-[#1E293B]">member_roster_q4.csv</p>
+                  <p className="text-[10px] text-[#64748B] uppercase tracking-wider">3.4 MB • Processed</p>
+                </div>
+                <CheckCircle size={16} className="text-[#059669] ml-4" />
+              </div>
+            </div>
+
+            <div className="glass-card rounded-2xl overflow-hidden mb-10 animate-fade-in-up">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1000px] text-left text-sm">
+                  <thead className="bg-[#1B3A6B]/5 text-[#1B3A6B] font-semibold border-b border-[#E2E8F0]/50">
+                    <tr>
+                      <th className="px-6 py-5">CLAIM ID</th>
+                      <th className="px-6 py-5">MEMBER NAME</th>
+                      <th className="px-6 py-5">AGE/GENDER</th>
+                      <th className="px-6 py-5">FACILITY</th>
+                      <th className="px-6 py-5">SERVICE DATE</th>
+                      <th className="px-6 py-5">PROC CODE</th>
+                      <th className="px-6 py-5">DIAG CODE</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E2E8F0]/50">
+                    {CLAIMS.map((claim, idx) => (
+                      <tr 
+                        key={claim.id} 
+                        className={`transition-all duration-500 hover:bg-white/50 ${idx < visibleRows ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
+                      >
+                        <td className="px-6 py-5 font-bold text-[#1B3A6B]">{claim.id}</td>
+                        <td className="px-6 py-5 font-medium text-[#1E293B]">{claim.memberName}</td>
+                        <td className="px-6 py-5 text-[#64748B] bg-[#F4F7FB]/50 rounded-md m-2 inline-block px-3 py-1 mt-4">{claim.age} / {claim.gender}</td>
+                        <td className="px-6 py-5">
+                          <div className="font-medium text-[#1E293B]">{claim.facility}</div>
+                          <div className="text-[11px] text-[#64748B] uppercase tracking-wider mt-0.5">{claim.city}, {claim.state}</div>
+                        </td>
+                        <td className="px-6 py-5 text-[#64748B] font-medium">{claim.serviceDate}</td>
+                        <td className="px-6 py-5"><span className="bg-[#0D7377]/10 text-[#0D7377] px-2 py-1 rounded font-mono text-xs font-bold">{claim.procedureCode}</span></td>
+                        <td className="px-6 py-5"><span className="bg-[#1B3A6B]/10 text-[#1B3A6B] px-2 py-1 rounded font-mono text-xs font-bold">{claim.diagnosisCode}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {visibleRows === CLAIMS.length && (
+              <div className="flex justify-center animate-fade-in-up" style={{ animationDelay: '0.5s' }}>
+                <button 
+                  onClick={handleAnalyze}
+                  className="bg-gradient-to-r from-[#0D7377] to-[#11999E] text-white px-10 py-4 rounded-xl font-bold text-lg flex items-center gap-3 animate-pulse-teal hover:scale-105 transition-all duration-300 shadow-xl shadow-[#0D7377]/30"
+                >
+                  <Zap size={20} className="fill-white" /> Run ClaimGuard AI Analysis <ChevronRight size={20} />
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {showOverlay && (
