@@ -531,7 +531,7 @@ export default function ClaimGuardApp() {
     const countTotal = useCountUp(4);
     const countCleared = useCountUp(1);
     const countFlagged = useCountUp(3);
-    const countPending = useCountUp(3);
+    const countPending = useCountUp(globalState.pendingReview);
 
     const handleRowClick = (claim: any) => {
       if (claim.riskLevel === 'LOW') {
