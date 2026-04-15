@@ -1,10 +1,8 @@
-"use client";
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
 import { 
   Database, AlertTriangle, LayoutDashboard, ChevronRight, 
   CheckCircle, MapPin, Clock, ShieldAlert, Activity, Zap,
-  Upload, File, X
+  Upload, File, X, Bell, FileText, AlertCircle, Check
 } from 'lucide-react';
 
 // --- HARDCODED DATA ---
@@ -22,7 +20,7 @@ const CLAIMS = [
     serviceDate: "2024-10-03",
     serviceTime: "10:00 AM",
     procedureCode: "99213",
-    procedureDesc: "Office Visit - Established Patient, Low Complexity",
+    procedureDesc: "Office Visit - Established Patient Low Complexity",
     diagnosisCode: "Z00.00",
     diagnosisDesc: "Routine General Medical Examination",
     anomalyType: "NONE",
@@ -73,7 +71,7 @@ const CLAIMS = [
     serviceDate: "2024-11-14",
     serviceTime: "11:30 AM",
     procedureCode: "99214",
-    procedureDesc: "Office Visit - Established Patient, Moderate Complexity",
+    procedureDesc: "Office Visit Established Patient Moderate Complexity",
     diagnosisCode: "I10",
     diagnosisDesc: "Essential Hypertension",
     anomalyType: "LOCATION CONFLICT",
@@ -98,7 +96,7 @@ const CLAIMS = [
     serviceDate: "2024-12-02",
     serviceTime: "2:15 PM",
     procedureCode: "99215",
-    procedureDesc: "Office Visit - Established Patient, High Complexity",
+    procedureDesc: "Office Visit Established Patient High Complexity",
     diagnosisCode: "E11.649",
     diagnosisDesc: "Type 2 Diabetes with Hypoglycemia (HCC 18)",
     anomalyType: "HCC ANOMALY",
@@ -109,17 +107,40 @@ const CLAIMS = [
     providerHCCRate: "4.2x above peer average",
     flagReason: "Diagnosis code E11.649 (Type 2 Diabetes with Hypoglycemia) submitted for member M-61033 is not supported by 24 months of longitudinal claim history. No prior diabetes diagnosis, A1C labs, or endocrinology encounters on record. Submitting provider HCC 18/19 rate is 4.2x above peer cohort average. Flagged for medical record review before encounter submission.",
     memberHistory: [
-      { date: "2022-11-08", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "Z00.00", desc: "Routine General Medical Exam", flagged: false },
-      { date: "2023-02-14", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "Z12.11", desc: "Screening for Colon Cancer", flagged: false },
-      { date: "2023-06-21", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "Z00.00", desc: "Routine General Medical Exam", flagged: false },
-      { date: "2023-09-05", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "R73.09", desc: "Other Abnormal Glucose (borderline - NOT HCC)", flagged: false },
-      { date: "2023-11-30", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "Z00.00", desc: "Routine General Medical Exam", flagged: false },
-      { date: "2024-03-12", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "Z12.11", desc: "Screening for Colon Cancer", flagged: false },
-      { date: "2024-07-18", provider: "Dr. Lisa Park - PCP", code: "99213", diagnosis: "Z00.00", desc: "Routine General Medical Exam", flagged: false },
-      { date: "2024-12-02", provider: "Dr. Marcus Bell - Endocrinology", code: "99215", diagnosis: "E11.649", desc: "Type 2 Diabetes with Hypoglycemia (HCC 18) - FLAGGED", flagged: true }
+      { date: "2022-11-08", provider: "Dr. Lisa Park - PCP", diagnosis: "Z00.00", desc: "Routine General Medical Exam", flagged: false },
+      { date: "2023-02-14", provider: "Dr. Lisa Park - PCP", diagnosis: "Z12.11", desc: "Screening for Colon Cancer", flagged: false },
+      { date: "2023-06-21", provider: "Dr. Lisa Park - PCP", diagnosis: "Z00.00", desc: "Routine General Medical Exam", flagged: false },
+      { date: "2023-09-05", provider: "Dr. Lisa Park - PCP", diagnosis: "R73.09", desc: "Other Abnormal Glucose borderline NOT HCC", flagged: false },
+      { date: "2023-11-30", provider: "Dr. Lisa Park - PCP", diagnosis: "Z00.00", desc: "Routine General Medical Exam", flagged: false },
+      { date: "2024-03-12", provider: "Dr. Lisa Park - PCP", diagnosis: "Z12.11", desc: "Screening for Colon Cancer", flagged: false },
+      { date: "2024-07-18", provider: "Dr. Lisa Park - PCP", diagnosis: "Z00.00", desc: "Routine General Medical Exam", flagged: false },
+      { date: "2024-12-02", provider: "Dr. Marcus Bell - Endocrinology", diagnosis: "E11.649", desc: "Type 2 Diabetes with Hypoglycemia (HCC 18) - FLAGGED", flagged: true }
     ]
   }
 ];
+
+// --- GLOBAL STATE CONTEXT ---
+type Decision = { claimId: string, decision: string, timestamp: string };
+type GlobalState = {
+  totalIngested: number;
+  autoCleared: number;
+  flagged: number;
+  pendingReview: number;
+  escalatedToSIU: number;
+  dataError: number;
+  valid: number;
+  reviewerDecisions: Decision[];
+  notificationPanel: { visible: boolean; claimId: string | null };
+};
+
+type GlobalContextType = {
+  state: GlobalState;
+  logDecision: (claimId: string, decision: 'Escalate to SIU' | 'Flag as Data Error' | 'Mark as Valid') => void;
+  closeNotification: () => void;
+  showToast: (msg: string, type: 'green' | 'amber' | 'red') => void;
+};
+
+const GlobalContext = createContext<GlobalContextType | undefined>(undefined);
 
 // --- CUSTOM HOOKS ---
 function useTypingEffect(text: string, speed = 18) {
@@ -171,35 +192,68 @@ function useCountUp(end: number, duration = 1000) {
 // --- MAIN APP COMPONENT ---
 export default function ClaimGuardApp() {
   const [currentRoute, setCurrentRoute] = useState('/ingestion');
-  const [decisions, setDecisions] = useState<{claimId: string, decision: string, timestamp: string}[]>([]);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{msg: string, type: 'green' | 'amber' | 'red'} | null>(null);
+  
+  const [globalState, setGlobalState] = useState<GlobalState>({
+    totalIngested: 4,
+    autoCleared: 1,
+    flagged: 3,
+    pendingReview: 3,
+    escalatedToSIU: 0,
+    dataError: 0,
+    valid: 0,
+    reviewerDecisions: [],
+    notificationPanel: { visible: false, claimId: null }
+  });
 
   const navigate = (route: string) => {
     window.scrollTo(0, 0);
     setCurrentRoute(route);
   };
 
-  const showToast = (msg: string) => {
-    setToast(msg);
+  const showToast = (msg: string, type: 'green' | 'amber' | 'red' = 'green') => {
+    setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  const logDecision = (claimId: string, decision: string) => {
-    setDecisions(prev => [{ claimId, decision, timestamp: new Date().toISOString() }, ...prev]);
-    showToast("Reviewer decision logged successfully");
+  const logDecision = (claimId: string, decision: 'Escalate to SIU' | 'Flag as Data Error' | 'Mark as Valid') => {
+    setGlobalState(prev => {
+      const newState = { ...prev };
+      
+      // Only decrement pending if this claim hasn't been reviewed yet
+      const alreadyReviewed = prev.reviewerDecisions.some(d => d.claimId === claimId);
+      if (!alreadyReviewed && newState.pendingReview > 0) {
+        newState.pendingReview -= 1;
+      }
+
+      newState.reviewerDecisions = [
+        { claimId, decision, timestamp: new Date().toISOString() },
+        ...prev.reviewerDecisions
+      ];
+
+      if (decision === 'Escalate to SIU') {
+        newState.escalatedToSIU += 1;
+        showToast("Claim escalated to SIU", "red");
+        setTimeout(() => {
+          setGlobalState(s => ({ ...s, notificationPanel: { visible: true, claimId } }));
+        }, 500);
+      } else if (decision === 'Flag as Data Error') {
+        newState.dataError += 1;
+        showToast("Claim flagged as data error", "amber");
+      } else if (decision === 'Mark as Valid') {
+        newState.valid += 1;
+        showToast("Claim marked as valid", "green");
+      }
+
+      return newState;
+    });
   };
 
-  const dashboardCounts = {
-    totalIngested: 4,
-    autoCleared: 1,
-    flagged: 3,
-    pendingReview: 3 - decisions.length,
-    escalatedToSIU: decisions.filter(d => d.decision === 'Escalate to SIU').length,
-    dataError: decisions.filter(d => d.decision === 'Flag as Data Error').length,
-    valid: decisions.filter(d => d.decision === 'Mark as Valid').length
+  const closeNotification = () => {
+    setGlobalState(prev => ({ ...prev, notificationPanel: { visible: false, claimId: null } }));
   };
 
-  // --- INLINE STYLES FOR PREMIUM UI ---
+  // --- INLINE STYLES ---
   const styles = `
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
@@ -210,59 +264,13 @@ export default function ClaimGuardApp() {
       overflow-x: hidden;
     }
     
-    /* Premium Glassmorphism & Shadows */
     .glass-card {
-      background: rgba(255, 255, 255, 0.85);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.5);
-      box-shadow: 0 10px 40px -10px rgba(27, 58, 107, 0.08), 0 1px 3px rgba(27, 58, 107, 0.05);
+      background: #FFFFFF;
+      border-radius: 10px;
+      border: 1px solid #E2E8F0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
 
-    .glass-nav {
-      background: rgba(27, 58, 107, 0.95);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .glass-sidebar {
-      background: linear-gradient(180deg, rgba(27, 58, 107, 0.98) 0%, rgba(15, 32, 59, 0.98) 100%);
-      backdrop-filter: blur(12px);
-      border-right: 1px solid rgba(255, 255, 255, 0.05);
-    }
-
-    /* AI Terminal Effect */
-    .ai-terminal {
-      background: linear-gradient(145deg, #0f172a, #1e293b);
-      box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
-      position: relative;
-      overflow: hidden;
-    }
-    .ai-terminal::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: linear-gradient(rgba(13, 115, 119, 0.05) 1px, transparent 1px),
-                  linear-gradient(90deg, rgba(13, 115, 119, 0.05) 1px, transparent 1px);
-      background-size: 20px 20px;
-      pointer-events: none;
-    }
-
-    /* Glowing Badges */
-    .glow-red { box-shadow: 0 0 12px rgba(220, 38, 38, 0.4); }
-    .glow-amber { box-shadow: 0 0 12px rgba(245, 158, 11, 0.4); }
-    .glow-green { box-shadow: 0 0 12px rgba(5, 150, 105, 0.4); }
-    .glow-teal { box-shadow: 0 0 20px rgba(13, 115, 119, 0.5); }
-
-    /* Text Gradients */
-    .text-gradient-navy {
-      background: linear-gradient(135deg, #1B3A6B 0%, #0D7377 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-
-    /* Typing Animation */
     .typing-cursor::after {
       content: '█';
       color: #0D7377;
@@ -271,7 +279,6 @@ export default function ClaimGuardApp() {
     }
     .typing-cursor-hidden::after { display: none; }
 
-    /* Donut Chart */
     .donut-chart {
       background: conic-gradient(
         #DC2626 0% 50%,
@@ -279,73 +286,159 @@ export default function ClaimGuardApp() {
         #059669 75% 100%
       );
       border-radius: 50%;
-      box-shadow: 0 10px 30px -10px rgba(0,0,0,0.2);
-      transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
-    .donut-chart:hover { transform: scale(1.05) rotate(5deg); }
 
-    /* Animations */
     @keyframes blink { 50% { opacity: 0; } }
     
     @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(12px); }
+      from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
     .animate-fade-in-up {
-      animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      animation: fadeInUp 0.3s ease forwards;
       opacity: 0;
     }
 
+    @keyframes slideInRight {
+      from { transform: translateX(100%); }
+      to { transform: translateX(0); }
+    }
+    .animate-slide-in-right {
+      animation: slideInRight 0.3s ease forwards;
+    }
+
     @keyframes pulse-teal {
-      0% { box-shadow: 0 0 0 0 rgba(13, 115, 119, 0.6); }
-      70% { box-shadow: 0 0 0 15px rgba(13, 115, 119, 0); }
+      0% { box-shadow: 0 0 0 0 rgba(13, 115, 119, 0.4); }
+      70% { box-shadow: 0 0 0 10px rgba(13, 115, 119, 0); }
       100% { box-shadow: 0 0 0 0 rgba(13, 115, 119, 0); }
     }
     .animate-pulse-teal { animation: pulse-teal 2s infinite; }
-
-    @keyframes scanline {
-      0% { transform: translateY(-100%); }
-      100% { transform: translateY(100vh); }
-    }
-    .scanner-line {
-      position: absolute;
-      top: 0; left: 0; right: 0; height: 4px;
-      background: #0D7377;
-      box-shadow: 0 0 20px 5px rgba(13, 115, 119, 0.8);
-      animation: scanline 2s linear infinite;
-      z-index: 101;
-    }
   `;
 
-  // --- BACKGROUND MESH ---
-  const BackgroundMesh = () => (
-    <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-[#CADCFC]/40 blur-[100px]"></div>
-      <div className="absolute bottom-[-10%] right-[-5%] w-[50%] h-[50%] rounded-full bg-[#0D7377]/10 blur-[120px]"></div>
-      <div className="absolute top-[20%] right-[10%] w-[30%] h-[30%] rounded-full bg-[#1B3A6B]/5 blur-[80px]"></div>
-    </div>
-  );
+  // --- COMPONENTS ---
+
+  const NotificationPanel = () => {
+    const { visible, claimId } = globalState.notificationPanel;
+    
+    if (!visible || !claimId) return null;
+    
+    const claim = CLAIMS.find(c => c.id === claimId);
+    if (!claim) return null;
+
+    const isLocation = claim.anomalyType === 'LOCATION CONFLICT';
+
+    return (
+      <div className="fixed top-0 right-0 w-[380px] h-full bg-white border-l-4 border-l-[#1B3A6B] shadow-[-10px_0_30px_rgba(0,0,0,0.1)] z-[9998] animate-slide-in-right flex flex-col">
+        <div className="bg-[#1B3A6B] text-white p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 font-bold">
+            <Bell size={18} />
+            {isLocation ? 'SIU Alert Sent' : 'Compliance Alert Sent'}
+            <span className="text-xs font-normal opacity-70 ml-2">{new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+          </div>
+          <button onClick={closeNotification} className="text-white/70 hover:text-white transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+        
+        <div className="p-6 flex-1 overflow-y-auto">
+          <div className="space-y-4 text-sm">
+            <div>
+              <span className="text-[#64748B] font-semibold w-20 inline-block">To:</span>
+              <span className="font-medium text-[#1E293B]">{isLocation ? 'SIU Investigation Team' : 'Coding Review Team + Compliance'}</span>
+            </div>
+            {isLocation && (
+              <div>
+                <span className="text-[#64748B] font-semibold w-20 inline-block">From:</span>
+                <span className="font-medium text-[#1E293B]">ClaimGuard Pattern Pulse</span>
+              </div>
+            )}
+            {isLocation && (
+              <div>
+                <span className="text-[#64748B] font-semibold w-20 inline-block">Priority:</span>
+                <span className="font-bold text-[#DC2626]">HIGH</span>
+              </div>
+            )}
+            {isLocation && (
+              <div>
+                <span className="text-[#64748B] font-semibold w-20 inline-block">Claim:</span>
+                <span className="font-medium text-[#1E293B]">{claim.id}</span>
+              </div>
+            )}
+            {isLocation && (
+              <div>
+                <span className="text-[#64748B] font-semibold w-20 inline-block">Member:</span>
+                <span className="font-medium text-[#1E293B]">{claim.memberName} — {claim.memberId}</span>
+              </div>
+            )}
+            <div>
+              <span className="text-[#64748B] font-semibold w-20 inline-block">Anomaly:</span>
+              <span className="font-medium text-[#1E293B]">{isLocation ? 'Location Conflict' : 'HCC Anomaly — RAF Integrity Risk'}</span>
+            </div>
+            <div>
+              <span className="text-[#64748B] font-semibold w-20 inline-block">Signal:</span>
+              <span className="font-medium text-[#1E293B]">{isLocation ? '1,698 miles, 2.5-hour window' : 'Provider HCC 18/19 rate 4.2x peer avg'}</span>
+            </div>
+            
+            <div className="mt-6 bg-[#F4F7FB] p-4 rounded-lg border border-[#E2E8F0] text-[#1E293B] leading-relaxed">
+              {isLocation ? (
+                "This claim has been escalated for SIU investigation. ClaimGuard detected a same-day location conflict that is not clinically possible. Please review member M-44219 and paired claim CG-2024-00587B."
+              ) : (
+                "Medical record review required before encounter submission. Diagnosis E11.649 (HCC 18) is not supported by 24-month member history. Encounter file hold recommended pending documentation review."
+              )}
+            </div>
+          </div>
+        </div>
+        
+        <div className="p-6 border-t border-[#E2E8F0] space-y-3">
+          {isLocation && (
+            <button 
+              onClick={() => showToast("Full alert view coming in Phase 2", "green")}
+              className="w-full border-2 border-[#0D7377] text-[#0D7377] font-bold py-2.5 rounded-lg hover:bg-[#0D7377]/5 transition-colors"
+            >
+              View Full Alert
+            </button>
+          )}
+          <button 
+            onClick={closeNotification}
+            className="w-full bg-[#1B3A6B] text-white font-bold py-2.5 rounded-lg hover:bg-[#152d53] transition-colors"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const ToastComponent = () => {
+    if (!toast) return null;
+    
+    const bgColors = {
+      green: 'bg-[#059669]',
+      amber: 'bg-[#F59E0B]',
+      red: 'bg-[#DC2626]'
+    };
+
+    return (
+      <div className={`fixed top-20 right-6 ${bgColors[toast.type]} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 z-[9999] animate-slide-in-right`}>
+        {toast.type === 'green' ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
+        <span className="text-sm font-medium">{toast.msg}</span>
+      </div>
+    );
+  };
 
   // --- SCREEN COMPONENTS ---
 
   const IngestionScreen = () => {
-    const [uploadState, setUploadState] = useState<'initial' | 'uploading' | 'loaded'>('initial');
     const [visibleRows, setVisibleRows] = useState(0);
     const [showOverlay, setShowOverlay] = useState(false);
     const [overlayState, setOverlayState] = useState<'scanning' | 'complete'>('scanning');
 
-    // Simulated file upload handler
-    const handleSimulatedUpload = () => {
-      setUploadState('uploading');
-      setTimeout(() => {
-        setUploadState('loaded');
-        // Start row animation after "upload" completes
-        const timers = CLAIMS.map((_, i) => 
-          setTimeout(() => setVisibleRows(prev => prev + 1), i * 200)
-        );
-        return () => timers.forEach(clearTimeout);
-      }, 1500);
-    };
+    useEffect(() => {
+      const timers = CLAIMS.map((_, i) => 
+        setTimeout(() => setVisibleRows(prev => prev + 1), i * 300)
+      );
+      return () => timers.forEach(clearTimeout);
+    }, []);
 
     const handleAnalyze = () => {
       setShowOverlay(true);
@@ -354,157 +447,77 @@ export default function ClaimGuardApp() {
         setTimeout(() => {
           setShowOverlay(false);
           navigate('/anomaly-report');
-        }, 1200);
+        }, 1000);
       }, 2500);
     };
 
     return (
-      <div className="animate-fade-in-up relative z-10">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gradient-navy tracking-tight mb-1">Claims Ingestion Pipeline</h1>
-            <p className="text-[#64748B] font-medium flex items-center gap-2">
-              <Database size={16} className="text-[#0D7377]" /> 
-              {uploadState === 'loaded' ? '4 claims loaded for AI analysis' : 'Upload datasets to begin analysis'}
-            </p>
-          </div>
+      <div className="animate-fade-in-up">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-[#1B3A6B]">Claims Ingestion — Batch Upload</h1>
+          <p className="text-[#64748B]">4 claims loaded for analysis</p>
         </div>
 
-        {uploadState === 'initial' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10 animate-fade-in-up">
-            {/* Simulated Claims Upload */}
-            <div 
-              onClick={handleSimulatedUpload}
-              className="glass-card rounded-2xl p-10 border-2 border-dashed border-[#1B3A6B]/20 hover:border-[#0D7377] hover:bg-white/90 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center text-center group"
-            >
-              <div className="w-20 h-20 bg-[#1B3A6B]/5 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                <Upload size={32} className="text-[#1B3A6B] group-hover:text-[#0D7377] transition-colors" />
-              </div>
-              <h3 className="text-xl font-bold text-[#1E293B] mb-2">Upload Claims Data</h3>
-              <p className="text-[#64748B] text-sm mb-6">Drag & drop your claims CSV file here, or click to browse.</p>
-              <span className="bg-[#1B3A6B]/5 text-[#1B3A6B] px-4 py-2 rounded-lg text-sm font-bold group-hover:bg-[#0D7377] group-hover:text-white transition-colors">
-                Select File
-              </span>
-            </div>
-
-            {/* Simulated Member Upload */}
-            <div 
-              onClick={handleSimulatedUpload}
-              className="glass-card rounded-2xl p-10 border-2 border-dashed border-[#1B3A6B]/20 hover:border-[#0D7377] hover:bg-white/90 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center text-center group"
-            >
-              <div className="w-20 h-20 bg-[#1B3A6B]/5 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                <Database size={32} className="text-[#1B3A6B] group-hover:text-[#0D7377] transition-colors" />
-              </div>
-              <h3 className="text-xl font-bold text-[#1E293B] mb-2">Upload Member Data</h3>
-              <p className="text-[#64748B] text-sm mb-6">Drag & drop your member demographics CSV file here.</p>
-              <span className="bg-[#1B3A6B]/5 text-[#1B3A6B] px-4 py-2 rounded-lg text-sm font-bold group-hover:bg-[#0D7377] group-hover:text-white transition-colors">
-                Select File
-              </span>
-            </div>
-          </div>
-        )}
-
-        {uploadState === 'uploading' && (
-          <div className="glass-card rounded-2xl p-16 flex flex-col items-center justify-center mb-10 animate-fade-in-up">
-            <div className="w-16 h-16 border-4 border-[#0D7377]/20 border-t-[#0D7377] rounded-full animate-spin mb-6"></div>
-            <h3 className="text-xl font-bold text-[#1E293B] mb-2">Processing Datasets...</h3>
-            <p className="text-[#64748B]">Cross-referencing claims with member history.</p>
-          </div>
-        )}
-
-        {uploadState === 'loaded' && (
-          <>
-            <div className="flex gap-4 mb-6 animate-fade-in-up">
-              <div className="bg-white/80 border border-[#059669]/30 px-4 py-3 rounded-xl flex items-center gap-3 shadow-sm">
-                <File size={20} className="text-[#059669]" />
-                <div>
-                  <p className="text-sm font-bold text-[#1E293B]">claims_batch_nov24.csv</p>
-                  <p className="text-[10px] text-[#64748B] uppercase tracking-wider">1.2 MB • Processed</p>
-                </div>
-                <CheckCircle size={16} className="text-[#059669] ml-4" />
-              </div>
-              <div className="bg-white/80 border border-[#059669]/30 px-4 py-3 rounded-xl flex items-center gap-3 shadow-sm">
-                <Database size={20} className="text-[#059669]" />
-                <div>
-                  <p className="text-sm font-bold text-[#1E293B]">member_roster_q4.csv</p>
-                  <p className="text-[10px] text-[#64748B] uppercase tracking-wider">3.4 MB • Processed</p>
-                </div>
-                <CheckCircle size={16} className="text-[#059669] ml-4" />
-              </div>
-            </div>
-
-            <div className="glass-card rounded-2xl overflow-hidden mb-10 animate-fade-in-up">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1000px] text-left text-sm">
-                  <thead className="bg-[#1B3A6B]/5 text-[#1B3A6B] font-semibold border-b border-[#E2E8F0]/50">
-                    <tr>
-                      <th className="px-6 py-5">CLAIM ID</th>
-                      <th className="px-6 py-5">MEMBER NAME</th>
-                      <th className="px-6 py-5">AGE/GENDER</th>
-                      <th className="px-6 py-5">FACILITY</th>
-                      <th className="px-6 py-5">SERVICE DATE</th>
-                      <th className="px-6 py-5">PROC CODE</th>
-                      <th className="px-6 py-5">DIAG CODE</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#E2E8F0]/50">
-                    {CLAIMS.map((claim, idx) => (
-                      <tr 
-                        key={claim.id} 
-                        className={`transition-all duration-500 hover:bg-white/50 ${idx < visibleRows ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}
-                      >
-                        <td className="px-6 py-5 font-bold text-[#1B3A6B]">{claim.id}</td>
-                        <td className="px-6 py-5 font-medium text-[#1E293B]">{claim.memberName}</td>
-                        <td className="px-6 py-5 text-[#64748B] bg-[#F4F7FB]/50 rounded-md m-2 inline-block px-3 py-1 mt-4">{claim.age} / {claim.gender}</td>
-                        <td className="px-6 py-5">
-                          <div className="font-medium text-[#1E293B]">{claim.facility}</div>
-                          <div className="text-[11px] text-[#64748B] uppercase tracking-wider mt-0.5">{claim.city}, {claim.state}</div>
-                        </td>
-                        <td className="px-6 py-5 text-[#64748B] font-medium">{claim.serviceDate}</td>
-                        <td className="px-6 py-5"><span className="bg-[#0D7377]/10 text-[#0D7377] px-2 py-1 rounded font-mono text-xs font-bold">{claim.procedureCode}</span></td>
-                        <td className="px-6 py-5"><span className="bg-[#1B3A6B]/10 text-[#1B3A6B] px-2 py-1 rounded font-mono text-xs font-bold">{claim.diagnosisCode}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {visibleRows === CLAIMS.length && (
-              <div className="flex justify-center animate-fade-in-up" style={{ animationDelay: '0.5s' }}>
-                <button 
-                  onClick={handleAnalyze}
-                  className="bg-gradient-to-r from-[#0D7377] to-[#11999E] text-white px-10 py-4 rounded-xl font-bold text-lg flex items-center gap-3 animate-pulse-teal hover:scale-105 transition-all duration-300 shadow-xl shadow-[#0D7377]/30"
+        <div className="glass-card overflow-x-auto mb-8">
+          <table className="w-full min-w-[1000px] text-left text-sm">
+            <thead className="bg-[#F4F7FB] text-[#64748B] font-medium border-b border-[#E2E8F0]">
+              <tr>
+                <th className="px-6 py-4">CLAIM ID</th>
+                <th className="px-6 py-4">MEMBER NAME</th>
+                <th className="px-6 py-4">AGE/GENDER</th>
+                <th className="px-6 py-4">FACILITY</th>
+                <th className="px-6 py-4">SERVICE DATE</th>
+                <th className="px-6 py-4">PROC CODE</th>
+                <th className="px-6 py-4">DIAG CODE</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E2E8F0]">
+              {CLAIMS.map((claim, idx) => (
+                <tr 
+                  key={claim.id} 
+                  className={`transition-all duration-300 ${idx < visibleRows ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
                 >
-                  <Zap size={20} className="fill-white" /> Run ClaimGuard AI Analysis <ChevronRight size={20} />
-                </button>
-              </div>
-            )}
-          </>
+                  <td className="px-6 py-4 font-medium text-[#1E293B]">{claim.id}</td>
+                  <td className="px-6 py-4 text-[#1E293B]">{claim.memberName}</td>
+                  <td className="px-6 py-4 text-[#64748B]">{claim.age} / {claim.gender}</td>
+                  <td className="px-6 py-4">
+                    <div className="text-[#1E293B]">{claim.facility}</div>
+                    <div className="text-[11px] text-[#64748B]">{claim.city}, {claim.state}</div>
+                  </td>
+                  <td className="px-6 py-4 text-[#64748B]">{claim.serviceDate}</td>
+                  <td className="px-6 py-4 text-[#64748B]">{claim.procedureCode}</td>
+                  <td className="px-6 py-4 text-[#64748B]">{claim.diagnosisCode}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {visibleRows === CLAIMS.length && (
+          <div className="flex justify-center animate-fade-in-up">
+            <button 
+              onClick={handleAnalyze}
+              className="bg-[#0D7377] text-white px-8 py-3 rounded-lg font-semibold flex items-center gap-2 animate-pulse-teal hover:bg-[#0a5c5f] transition-colors"
+            >
+              Run ClaimGuard Analysis <ChevronRight size={18} />
+            </button>
+          </div>
         )}
 
         {showOverlay && (
-          <div className="fixed inset-0 bg-[#0f172a]/90 backdrop-blur-xl z-[100] flex flex-col items-center justify-center transition-opacity duration-500">
-            {overlayState === 'scanning' && <div className="scanner-line"></div>}
-            
+          <div className="fixed inset-0 bg-[#1B3A6B] z-[100] flex flex-col items-center justify-center transition-opacity duration-500">
             {overlayState === 'scanning' ? (
-              <div className="flex flex-col items-center animate-fade-in-up">
-                <div className="relative w-24 h-24 mb-8">
-                  <div className="absolute inset-0 border-4 border-[#0D7377]/20 rounded-full"></div>
-                  <div className="absolute inset-0 border-4 border-[#0D7377] rounded-full border-t-transparent animate-spin"></div>
-                  <ShieldAlert size={32} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[#0D7377]" />
-                </div>
-                <h2 className="text-3xl font-bold text-white tracking-tight">ClaimGuard AI Engine Active</h2>
-                <p className="text-[#0D7377] mt-3 font-mono text-sm uppercase tracking-widest animate-pulse">Scanning for anomaly patterns...</p>
-              </div>
+              <>
+                <div className="w-16 h-16 border-4 border-[#0D7377]/30 border-t-[#0D7377] rounded-full animate-spin mb-6"></div>
+                <h2 className="text-2xl font-medium text-white">ClaimGuard is scanning for anomaly patterns...</h2>
+              </>
             ) : (
-              <div className="flex flex-col items-center animate-fade-in-up">
-                <div className="w-24 h-24 bg-gradient-to-br from-[#0D7377] to-[#11999E] rounded-full flex items-center justify-center mb-8 glow-teal shadow-2xl">
-                  <CheckCircle size={48} className="text-white" />
+              <>
+                <div className="w-16 h-16 bg-[#0D7377] rounded-full flex items-center justify-center mb-6 animate-fade-in-up">
+                  <CheckCircle size={32} className="text-white" />
                 </div>
-                <h2 className="text-4xl font-bold text-white tracking-tight mb-2">Analysis Complete</h2>
-                <p className="text-[#0D7377] text-xl font-medium">3 anomalies detected across 4 claims</p>
-              </div>
+                <h2 className="text-2xl font-bold text-[#0D7377] animate-fade-in-up">Analysis complete — 3 anomalies detected ✓</h2>
+              </>
             )}
           </div>
         )}
@@ -520,93 +533,90 @@ export default function ClaimGuardApp() {
 
     const handleRowClick = (claim: any) => {
       if (claim.riskLevel === 'LOW') {
-        showToast("This claim was auto-cleared — no action required");
+        showToast("This claim was auto-cleared — no action required", "green");
       } else {
         navigate(`/claim/${claim.id}`);
       }
     };
 
     return (
-      <div className="animate-fade-in-up relative z-10">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gradient-navy tracking-tight mb-1">Anomaly Report</h1>
-          <p className="text-[#64748B] font-medium">ClaimGuard detected 3 anomalies across 4 ingested claims</p>
+      <div className="animate-fade-in-up">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-[#1B3A6B]">Anomaly Report — Batch Analysis</h1>
+          <p className="text-[#64748B]">ClaimGuard detected 3 anomalies across 4 ingested claims</p>
         </div>
 
-        <div className="grid grid-cols-4 gap-6 mb-10">
-          {[
-            { count: countTotal, label: "Total Ingested", color: "#1B3A6B", bg: "bg-[#1B3A6B]/5" },
-            { count: countCleared, label: "Auto-Cleared", color: "#059669", bg: "bg-[#059669]/5" },
-            { count: countFlagged, label: "Flagged for Review", color: "#DC2626", bg: "bg-[#DC2626]/5" },
-            { count: countPending, label: "Pending Review", color: "#0D7377", bg: "bg-[#0D7377]/5" }
-          ].map((stat, i) => (
-            <div key={i} className="glass-card rounded-2xl p-6 relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
-              <div className={`absolute top-0 left-0 w-full h-1`} style={{ backgroundColor: stat.color }}></div>
-              <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl opacity-50 transition-opacity group-hover:opacity-80 ${stat.bg}`}></div>
-              <div className="text-[42px] font-black leading-none mb-2" style={{ color: stat.color }}>{stat.count}</div>
-              <div className="text-[12px] text-[#64748B] uppercase tracking-wider font-bold">{stat.label}</div>
-            </div>
-          ))}
+        <div className="grid grid-cols-4 gap-6 mb-8">
+          <div className="glass-card p-6 border-t-4 border-t-[#1B3A6B]">
+            <div className="text-[36px] font-bold text-[#1E293B] leading-none mb-1">{countTotal}</div>
+            <div className="text-[12px] text-[#64748B] uppercase tracking-wide font-medium">Total Claims Ingested</div>
+          </div>
+          <div className="glass-card p-6 border-t-4 border-t-[#059669]">
+            <div className="text-[36px] font-bold text-[#059669] leading-none mb-1">{countCleared}</div>
+            <div className="text-[12px] text-[#64748B] uppercase tracking-wide font-medium">Auto-Cleared</div>
+          </div>
+          <div className="glass-card p-6 border-t-4 border-t-[#DC2626]">
+            <div className="text-[36px] font-bold text-[#DC2626] leading-none mb-1">{countFlagged}</div>
+            <div className="text-[12px] text-[#64748B] uppercase tracking-wide font-medium">Flagged for Review</div>
+          </div>
+          <div className="glass-card p-6 border-t-4 border-t-[#0D7377]">
+            <div className="text-[36px] font-bold text-[#0D7377] leading-none mb-1">{countPending}</div>
+            <div className="text-[12px] text-[#64748B] uppercase tracking-wide font-medium">Pending Review</div>
+          </div>
         </div>
 
-        <div className="glass-card rounded-2xl overflow-hidden">
-          <div className="px-8 py-5 border-b border-[#E2E8F0]/50 bg-white/50 flex items-center gap-3">
-            <AlertTriangle size={20} className="text-[#DC2626]" />
-            <h2 className="font-bold text-[#1E293B] text-lg">Flagged Claims Queue</h2>
+        <div className="glass-card overflow-hidden">
+          <div className="px-6 py-4 border-b border-[#E2E8F0] bg-[#F4F7FB]">
+            <h2 className="font-semibold text-[#1E293B]">Flagged Claims</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-[#64748B] font-semibold text-xs uppercase tracking-wider border-b border-[#E2E8F0]/50">
+              <thead className="text-[#64748B] font-medium border-b border-[#E2E8F0]">
                 <tr>
-                  <th className="px-8 py-5 w-[140px]">CLAIM ID</th>
-                  <th className="px-8 py-5 w-[150px]">MEMBER NAME</th>
-                  <th className="px-8 py-5 w-[160px]">ANOMALY TYPE</th>
-                  <th className="px-8 py-5 w-[100px]">RISK</th>
-                  <th className="px-8 py-5 w-[220px]">AI SIGNAL</th>
-                  <th className="px-8 py-5 w-[130px]">STATUS</th>
+                  <th className="px-6 py-4 w-[140px]">CLAIM ID</th>
+                  <th className="px-6 py-4 w-[130px]">MEMBER NAME</th>
+                  <th className="px-6 py-4 w-[150px]">ANOMALY TYPE</th>
+                  <th className="px-6 py-4 w-[100px]">RISK</th>
+                  <th className="px-6 py-4 w-[220px]">SIGNAL</th>
+                  <th className="px-6 py-4 w-[130px]">STATUS</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E2E8F0]/30">
-                {CLAIMS.map((claim, idx) => {
+              <tbody className="divide-y divide-[#E2E8F0]">
+                {CLAIMS.map((claim) => {
                   const isLow = claim.riskLevel === 'LOW';
                   const isRed = claim.riskColor === 'red';
                   const isAmber = claim.riskColor === 'amber';
                   
                   let borderClass = 'border-l-[#059669]';
-                  let bgClass = 'bg-gradient-to-r from-[#F0FDF4] to-transparent';
-                  let badgeClass = 'bg-[#059669] text-white glow-green';
+                  let bgClass = 'bg-[#F0FDF4]';
+                  let badgeClass = 'bg-[#059669] text-white';
                   
                   if (isRed) {
                     borderClass = 'border-l-[#DC2626]';
-                    bgClass = 'bg-gradient-to-r from-[#FEF2F2] to-transparent';
-                    badgeClass = 'bg-[#DC2626] text-white glow-red';
+                    bgClass = 'bg-[#FEF2F2]';
+                    badgeClass = 'bg-[#DC2626] text-white';
                   } else if (isAmber) {
                     borderClass = 'border-l-[#F59E0B]';
-                    bgClass = 'bg-gradient-to-r from-[#FFFBEB] to-transparent';
-                    badgeClass = 'bg-[#F59E0B] text-white glow-amber';
+                    bgClass = 'bg-[#FFFBEB]';
+                    badgeClass = 'bg-[#F59E0B] text-white';
                   }
 
                   return (
                     <tr 
                       key={claim.id} 
                       onClick={() => handleRowClick(claim)}
-                      className={`cursor-pointer hover:bg-white/80 transition-all duration-300 border-l-[4px] ${borderClass} ${!isLow ? bgClass : ''} animate-fade-in-up`}
-                      style={{ animationDelay: `${idx * 0.1}s` }}
+                      className={`cursor-pointer hover:bg-[#E8F4F5] transition-colors border-l-[4px] ${borderClass} ${!isLow ? bgClass : ''}`}
                     >
-                      <td className="px-8 py-5 font-bold text-[#1B3A6B]">{claim.id}</td>
-                      <td className="px-8 py-5 font-medium text-[#1E293B]">{claim.memberName}</td>
-                      <td className="px-8 py-5 font-medium text-[#64748B]">{claim.anomalyType}</td>
-                      <td className="px-8 py-5">
-                        <span className={`px-4 py-1.5 rounded-full text-[10px] font-black tracking-wider ${badgeClass}`}>
+                      <td className="px-6 py-4 font-medium text-[#1E293B]">{claim.id}</td>
+                      <td className="px-6 py-4 text-[#1E293B]">{claim.memberName}</td>
+                      <td className="px-6 py-4 text-[#64748B]">{claim.anomalyType}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1 rounded-[20px] text-[11px] font-bold uppercase ${badgeClass}`}>
                           {claim.riskLevel}
                         </span>
                       </td>
-                      <td className="px-8 py-5 text-[#64748B]">{claim.signal}</td>
-                      <td className="px-8 py-5">
-                        <span className={`text-xs font-bold ${isLow ? 'text-[#059669]' : 'text-[#1B3A6B]'}`}>
-                          {claim.status}
-                        </span>
-                      </td>
+                      <td className="px-6 py-4 text-[#64748B]">{claim.signal}</td>
+                      <td className="px-6 py-4 text-[#64748B] font-medium">{claim.status}</td>
                     </tr>
                   );
                 })}
@@ -623,140 +633,111 @@ export default function ClaimGuardApp() {
     const { displayedText, isComplete } = useTypingEffect(claim.flagReason || '', 18);
 
     return (
-      <div className="animate-fade-in-up relative z-10">
-        <div className="mb-6 text-sm font-medium text-[#64748B] flex items-center gap-2 cursor-pointer hover:text-[#0D7377] transition-colors w-fit" onClick={() => navigate('/anomaly-report')}>
-          <ChevronRight size={16} className="rotate-180" /> Back to Anomaly Report
+      <div className="animate-fade-in-up">
+        <div className="mb-6 text-sm text-[#64748B] flex items-center gap-2 cursor-pointer" onClick={() => navigate('/anomaly-report')}>
+          <span className="hover:text-[#1B3A6B]">Anomaly Report</span> <ChevronRight size={14} /> <span className="text-[#1E293B] font-medium">{claim.id}</span>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* LEFT COLUMN */}
-          <div className="lg:col-span-7 space-y-8">
-            <div className="glass-card rounded-2xl p-8 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#DC2626] to-[#ef4444]"></div>
-              <div className="absolute -right-10 -top-10 w-40 h-40 bg-[#DC2626]/5 rounded-full blur-3xl"></div>
-              
-              <div className="flex justify-between items-start mb-8 mt-2">
+          <div className="space-y-6">
+            <div className="glass-card p-6 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-2 bg-[#DC2626]"></div>
+              <div className="flex justify-between items-start mb-6 mt-2">
                 <div>
-                  <h2 className="text-3xl font-black text-[#1E293B] tracking-tight">{claim.id}</h2>
-                  <p className="text-[#64748B] font-medium mt-1 flex items-center gap-2">
-                    <Clock size={14} /> Service Date: {claim.serviceDate}
-                  </p>
+                  <h2 className="text-xl font-bold text-[#1E293B]">{claim.id}</h2>
+                  <p className="text-[#64748B] text-sm">Service Date: {claim.serviceDate}</p>
                 </div>
-                <span className="bg-[#DC2626] text-white px-5 py-2 rounded-full text-xs font-black tracking-widest glow-red shadow-lg">
+                <span className="bg-[#DC2626] text-white px-4 py-1.5 rounded-[20px] text-[11px] font-bold uppercase tracking-wider">
                   HIGH RISK
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-y-6 gap-x-8 text-sm">
-                <div className="bg-[#F4F7FB]/50 p-4 rounded-xl border border-[#E2E8F0]/50">
-                  <p className="text-[#64748B] text-[10px] font-bold uppercase tracking-wider mb-1">Member Profile</p>
-                  <p className="font-bold text-[#1E293B] text-base">{claim.memberName}</p>
-                  <p className="text-[#64748B] mt-1">{claim.memberId} • {claim.age} yrs • {claim.gender}</p>
+              <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
+                <div>
+                  <p className="text-[#64748B] text-xs uppercase mb-1">Member</p>
+                  <p className="font-medium text-[#1E293B]">{claim.memberName} ({claim.memberId})</p>
+                  <p className="text-[#64748B]">{claim.age} yrs • {claim.gender}</p>
                 </div>
-                <div className="bg-[#F4F7FB]/50 p-4 rounded-xl border border-[#E2E8F0]/50">
-                  <p className="text-[#64748B] text-[10px] font-bold uppercase tracking-wider mb-1">Provider Details</p>
-                  <p className="font-bold text-[#1E293B] text-base">{claim.providerName}</p>
-                  <p className="text-[#64748B] mt-1">{claim.specialty}</p>
+                <div>
+                  <p className="text-[#64748B] text-xs uppercase mb-1">Provider</p>
+                  <p className="font-medium text-[#1E293B]">{claim.providerName}</p>
+                  <p className="text-[#64748B]">{claim.specialty}</p>
                 </div>
-                <div className="col-span-2 bg-[#F4F7FB]/50 p-4 rounded-xl border border-[#E2E8F0]/50">
-                  <p className="text-[#64748B] text-[10px] font-bold uppercase tracking-wider mb-1">Facility Location</p>
-                  <p className="font-bold text-[#1E293B] text-base">{claim.facility}</p>
-                  <p className="text-[#64748B] mt-1 flex items-center gap-1"><MapPin size={14}/> {claim.city}, {claim.state}</p>
+                <div className="col-span-2">
+                  <p className="text-[#64748B] text-xs uppercase mb-1">Facility</p>
+                  <p className="font-medium text-[#1E293B]">{claim.facility}</p>
+                  <p className="text-[#64748B]">{claim.city}, {claim.state}</p>
                 </div>
-                <div className="col-span-2 bg-gradient-to-br from-[#1B3A6B]/5 to-transparent p-5 rounded-xl border border-[#1B3A6B]/10">
-                  <div className="flex gap-8">
+                <div className="col-span-2 bg-[#F4F7FB] p-3 rounded-lg border border-[#E2E8F0]">
+                  <div className="flex gap-4">
                     <div>
-                      <p className="text-[#1B3A6B]/70 text-[10px] font-bold uppercase tracking-wider mb-1">Procedure</p>
-                      <p className="font-mono font-bold text-[#1B3A6B] text-lg">{claim.procedureCode}</p>
+                      <p className="text-[#64748B] text-xs uppercase mb-1">Procedure</p>
+                      <p className="font-medium text-[#1E293B]">{claim.procedureCode}</p>
                     </div>
                     <div>
-                      <p className="text-[#1B3A6B]/70 text-[10px] font-bold uppercase tracking-wider mb-1">Diagnosis</p>
-                      <p className="font-mono font-bold text-[#1B3A6B] text-lg">{claim.diagnosisCode}</p>
+                      <p className="text-[#64748B] text-xs uppercase mb-1">Diagnosis</p>
+                      <p className="font-medium text-[#1E293B]">{claim.diagnosisCode}</p>
                     </div>
                   </div>
-                  <p className="text-[#1E293B] font-medium mt-3">{claim.procedureDesc}</p>
+                  <p className="text-[#64748B] text-xs mt-2">{claim.procedureDesc}</p>
                 </div>
               </div>
             </div>
 
-            <div className="glass-card rounded-2xl p-8">
-              <h3 className="font-bold text-[#1E293B] text-lg mb-6 flex items-center gap-2">
-                <MapPin size={20} className="text-[#DC2626]" /> Spatial Impossibility Analysis
+            <div className="glass-card p-6">
+              <h3 className="font-semibold text-[#1E293B] mb-4 flex items-center gap-2">
+                <MapPin size={18} className="text-[#64748B]" /> Location Analysis
               </h3>
-              <div className="relative bg-[#0f172a] rounded-xl p-6 overflow-hidden border border-[#1e293b] shadow-inner">
-                {/* Grid background for map */}
-                <div className="absolute inset-0" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+              <svg viewBox="0 0 400 200" className="w-full h-48 bg-[#F4F7FB] rounded-lg border border-[#E2E8F0]">
+                <path d="M 100 100 Q 200 50 300 120" fill="none" stroke="#DC2626" strokeWidth="2" strokeDasharray="5,5" />
                 
-                <svg viewBox="0 0 400 200" className="w-full h-56 relative z-10 drop-shadow-xl">
-                  {/* Glowing line */}
-                  <path d="M 80 100 Q 200 20 320 120" fill="none" stroke="rgba(220, 38, 38, 0.3)" strokeWidth="8" strokeLinecap="round" />
-                  <path d="M 80 100 Q 200 20 320 120" fill="none" stroke="#DC2626" strokeWidth="2" strokeDasharray="6,6" className="animate-[dash_20s_linear_infinite]" />
-                  
-                  {/* Pin 1 */}
-                  <circle cx="80" cy="100" r="16" fill="rgba(13, 115, 119, 0.2)" className="animate-pulse" />
-                  <circle cx="80" cy="100" r="6" fill="#0D7377" />
-                  <rect x="30" y="125" width="100" height="40" rx="6" fill="rgba(15, 23, 42, 0.8)" border="1px solid rgba(255,255,255,0.1)" />
-                  <text x="80" y="142" textAnchor="middle" className="text-[11px] font-bold fill-white">Denver, CO</text>
-                  <text x="80" y="156" textAnchor="middle" className="text-[10px] font-mono fill-[#0D7377]">9:00 AM</text>
-                  
-                  {/* Pin 2 */}
-                  <circle cx="320" cy="120" r="24" fill="rgba(220, 38, 38, 0.2)" className="animate-pulse" style={{ animationDelay: '0.5s' }} />
-                  <circle cx="320" cy="120" r="6" fill="#DC2626" />
-                  <rect x="270" y="145" width="100" height="40" rx="6" fill="rgba(15, 23, 42, 0.8)" />
-                  <text x="320" y="162" textAnchor="middle" className="text-[11px] font-bold fill-white">Tampa, FL</text>
-                  <text x="320" y="176" textAnchor="middle" className="text-[10px] font-mono fill-[#DC2626]">11:30 AM</text>
-                  
-                  {/* Distance Badge */}
-                  <rect x="160" y="45" width="80" height="24" rx="12" fill="#DC2626" />
-                  <text x="200" y="61" textAnchor="middle" className="text-[11px] font-black tracking-wider fill-white">1,698 MI</text>
-                </svg>
-              </div>
+                <circle cx="100" cy="100" r="6" fill="#1B3A6B" />
+                <text x="100" y="80" textAnchor="middle" className="text-[11px] font-semibold fill-[#1E293B]">Denver, CO</text>
+                <text x="100" y="120" textAnchor="middle" className="text-[10px] fill-[#64748B]">9:00 AM</text>
+                
+                <circle cx="300" cy="120" r="6" fill="#DC2626" />
+                <text x="300" y="100" textAnchor="middle" className="text-[11px] font-semibold fill-[#1E293B]">Tampa, FL</text>
+                <text x="300" y="140" textAnchor="middle" className="text-[10px] fill-[#64748B]">11:30 AM</text>
+                
+                <rect x="160" y="60" width="80" height="20" rx="10" fill="white" stroke="#DC2626" strokeWidth="1" />
+                <text x="200" y="74" textAnchor="middle" className="text-[10px] font-bold fill-[#DC2626]">1,698 miles</text>
+              </svg>
             </div>
           </div>
 
           {/* RIGHT COLUMN */}
-          <div className="lg:col-span-5 space-y-8">
-            <div className="glass-card rounded-2xl overflow-hidden shadow-xl shadow-[#1B3A6B]/10 border border-[#1B3A6B]/20">
-              <div className="bg-gradient-to-r from-[#1B3A6B] to-[#0f203b] px-6 py-5 border-b border-white/10">
-                <h2 className="text-white font-bold flex items-center gap-3 text-lg tracking-wide">
-                  <ShieldAlert size={20} className="text-[#0D7377]" /> AI Anomaly Engine
+          <div className="space-y-6">
+            <div className="glass-card overflow-hidden">
+              <div className="bg-[#0D7377] px-6 py-4">
+                <h2 className="text-white font-semibold flex items-center gap-2">
+                  <ShieldAlert size={18} /> ClaimGuard Anomaly Explanation
                 </h2>
               </div>
-              <div className="p-1 bg-[#0f172a]">
-                <div className="ai-terminal p-6 rounded-xl min-h-[280px] flex flex-col">
-                  <div className="flex items-center gap-2 mb-6">
-                    <div className="w-3 h-3 rounded-full bg-[#DC2626] glow-red"></div>
-                    <div className="text-[#DC2626] font-mono text-xs font-bold tracking-widest uppercase">Location Conflict Detected</div>
-                  </div>
-                  <div className="text-[#e2e8f0] font-mono text-sm leading-relaxed flex-1">
-                    <span className={!isComplete ? "typing-cursor" : "typing-cursor-hidden"}>
-                      {displayedText}
-                    </span>
-                  </div>
-                  {isComplete && (
-                    <div className="mt-6 pt-4 border-t border-white/10 flex items-center justify-between animate-fade-in-up">
-                      <span className="text-[#64748B] font-mono text-[10px]">CONFIDENCE SCORE</span>
-                      <span className="text-[#0D7377] font-mono font-bold text-lg glow-teal">99.8%</span>
-                    </div>
-                  )}
+              <div className="p-6">
+                <div className="inline-block bg-[#FEF2F2] text-[#DC2626] border border-[#DC2626]/20 px-3 py-1 rounded-md text-xs font-bold mb-4">
+                  LOCATION CONFLICT
+                </div>
+                <div className="bg-[#1E293B] text-[#CADCFC] p-4 rounded-lg font-mono text-sm leading-relaxed min-h-[120px]">
+                  <span className={!isComplete ? "typing-cursor" : "typing-cursor-hidden"}>
+                    {displayedText}
+                  </span>
                 </div>
               </div>
             </div>
 
-            <div className="glass-card rounded-2xl p-8">
-              <h3 className="font-bold text-[#1E293B] text-lg mb-6">Reviewer Action Required</h3>
-              <div className="flex flex-col gap-4">
-                <button onClick={() => logDecision(claim.id, 'Escalate to SIU')} className="w-full bg-gradient-to-r from-[#DC2626] to-[#b91c1c] hover:from-[#b91c1c] hover:to-[#991b1b] text-white py-4 rounded-xl text-sm font-bold tracking-wide transition-all shadow-lg shadow-[#DC2626]/30 hover:shadow-[#DC2626]/50 hover:-translate-y-0.5 flex items-center justify-center gap-2">
-                  <ShieldAlert size={18} /> Escalate to SIU
+            <div className="glass-card p-6">
+              <h3 className="font-semibold text-[#1E293B] mb-4">Reviewer Action</h3>
+              <div className="flex gap-3">
+                <button onClick={() => logDecision(claim.id, 'Mark as Valid')} className="flex-1 bg-[#F0FDF4] hover:bg-[#dcfce7] text-[#059669] border border-[#059669]/30 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+                  Mark as Valid
                 </button>
-                <div className="grid grid-cols-2 gap-4">
-                  <button onClick={() => logDecision(claim.id, 'Flag as Data Error')} className="bg-white hover:bg-[#FFFBEB] text-[#F59E0B] border-2 border-[#F59E0B]/20 hover:border-[#F59E0B] py-3 rounded-xl text-sm font-bold transition-all">
-                    Data Error
-                  </button>
-                  <button onClick={() => logDecision(claim.id, 'Mark as Valid')} className="bg-white hover:bg-[#F0FDF4] text-[#059669] border-2 border-[#059669]/20 hover:border-[#059669] py-3 rounded-xl text-sm font-bold transition-all">
-                    Mark Valid
-                  </button>
-                </div>
+                <button onClick={() => logDecision(claim.id, 'Flag as Data Error')} className="flex-1 bg-[#FFFBEB] hover:bg-[#fef3c7] text-[#F59E0B] border border-[#F59E0B]/30 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+                  Flag as Data Error
+                </button>
+                <button onClick={() => logDecision(claim.id, 'Escalate to SIU')} className="flex-1 bg-[#DC2626] hover:bg-[#b91c1c] text-white py-2.5 rounded-lg text-sm font-semibold transition-colors shadow-sm">
+                  Escalate to SIU
+                </button>
               </div>
             </div>
           </div>
@@ -770,74 +751,65 @@ export default function ClaimGuardApp() {
     const { displayedText, isComplete } = useTypingEffect(claim.flagReason || '', 18);
 
     return (
-      <div className="animate-fade-in-up relative z-10">
-        <div className="mb-6 text-sm font-medium text-[#64748B] flex items-center gap-2 cursor-pointer hover:text-[#0D7377] transition-colors w-fit" onClick={() => navigate('/anomaly-report')}>
-          <ChevronRight size={16} className="rotate-180" /> Back to Anomaly Report
+      <div className="animate-fade-in-up">
+        <div className="mb-6 text-sm text-[#64748B] flex items-center gap-2 cursor-pointer" onClick={() => navigate('/anomaly-report')}>
+          <span className="hover:text-[#1B3A6B]">Anomaly Report</span> <ChevronRight size={14} /> <span className="text-[#1E293B] font-medium">{claim.id}</span>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* LEFT COLUMN */}
-          <div className="lg:col-span-7 space-y-8">
-            <div className="glass-card rounded-2xl p-8 relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-[#F59E0B] to-[#fbbf24]"></div>
-              <div className="absolute -right-10 -top-10 w-40 h-40 bg-[#F59E0B]/5 rounded-full blur-3xl"></div>
-              
-              <div className="flex justify-between items-start mb-8 mt-2">
+          <div className="space-y-6">
+            <div className="glass-card p-6 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-2 bg-[#F59E0B]"></div>
+              <div className="flex justify-between items-start mb-6 mt-2">
                 <div>
-                  <h2 className="text-3xl font-black text-[#1E293B] tracking-tight">{claim.id}</h2>
-                  <p className="text-[#64748B] font-medium mt-1 flex items-center gap-2">
-                    <Clock size={14} /> Service Date: {claim.serviceDate}
-                  </p>
+                  <h2 className="text-xl font-bold text-[#1E293B]">{claim.id}</h2>
+                  <p className="text-[#64748B] text-sm">Service Date: {claim.serviceDate}</p>
                 </div>
-                <span className="bg-[#F59E0B] text-white px-5 py-2 rounded-full text-xs font-black tracking-widest glow-amber shadow-lg">
+                <span className="bg-[#F59E0B] text-white px-4 py-1.5 rounded-[20px] text-[11px] font-bold uppercase tracking-wider">
                   HIGH RISK
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-y-6 gap-x-8 text-sm">
-                <div className="bg-[#F4F7FB]/50 p-4 rounded-xl border border-[#E2E8F0]/50">
-                  <p className="text-[#64748B] text-[10px] font-bold uppercase tracking-wider mb-1">Member Profile</p>
-                  <p className="font-bold text-[#1E293B] text-base">{claim.memberName}</p>
-                  <p className="text-[#64748B] mt-1">{claim.memberId} • {claim.age} yrs • {claim.gender}</p>
+              <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-sm">
+                <div>
+                  <p className="text-[#64748B] text-xs uppercase mb-1">Member</p>
+                  <p className="font-medium text-[#1E293B]">{claim.memberName} ({claim.memberId})</p>
+                  <p className="text-[#64748B]">{claim.age} yrs • {claim.gender}</p>
                 </div>
-                <div className="bg-[#F4F7FB]/50 p-4 rounded-xl border border-[#E2E8F0]/50">
-                  <p className="text-[#64748B] text-[10px] font-bold uppercase tracking-wider mb-1">Provider Details</p>
-                  <p className="font-bold text-[#1E293B] text-base">{claim.providerName}</p>
-                  <p className="text-[#64748B] mt-1">{claim.specialty}</p>
+                <div>
+                  <p className="text-[#64748B] text-xs uppercase mb-1">Provider</p>
+                  <p className="font-medium text-[#1E293B]">{claim.providerName}</p>
+                  <p className="text-[#64748B]">{claim.specialty}</p>
                 </div>
-                <div className="col-span-2 bg-gradient-to-br from-[#1B3A6B]/5 to-transparent p-5 rounded-xl border border-[#1B3A6B]/10">
-                  <div className="flex gap-8">
+                <div className="col-span-2 bg-[#F4F7FB] p-3 rounded-lg border border-[#E2E8F0]">
+                  <div className="flex gap-4">
                     <div>
-                      <p className="text-[#1B3A6B]/70 text-[10px] font-bold uppercase tracking-wider mb-1">Procedure</p>
-                      <p className="font-mono font-bold text-[#1B3A6B] text-lg">{claim.procedureCode}</p>
+                      <p className="text-[#64748B] text-xs uppercase mb-1">Procedure</p>
+                      <p className="font-medium text-[#1E293B]">{claim.procedureCode}</p>
                     </div>
                     <div>
-                      <p className="text-[#1B3A6B]/70 text-[10px] font-bold uppercase tracking-wider mb-1">Diagnosis</p>
-                      <p className="font-mono font-bold text-[#1B3A6B] text-lg">{claim.diagnosisCode}</p>
+                      <p className="text-[#64748B] text-xs uppercase mb-1">Diagnosis</p>
+                      <p className="font-medium text-[#1E293B]">{claim.diagnosisCode}</p>
                     </div>
                   </div>
-                  <p className="text-[#1E293B] font-medium mt-3">{claim.diagnosisDesc}</p>
+                  <p className="text-[#64748B] text-xs mt-2">{claim.diagnosisDesc}</p>
                 </div>
               </div>
             </div>
 
-            <div className="glass-card rounded-2xl p-8">
-              <h3 className="font-bold text-[#1E293B] text-lg mb-8 flex items-center gap-2">
-                <Activity size={20} className="text-[#F59E0B]" /> Longitudinal Clinical History
+            <div className="glass-card p-6">
+              <h3 className="font-semibold text-[#1E293B] mb-6 flex items-center gap-2">
+                <Clock size={18} className="text-[#64748B]" /> Member Longitudinal History
               </h3>
-              <div className="relative border-l-2 border-[#E2E8F0] ml-4 space-y-8">
+              <div className="relative border-l-2 border-[#E2E8F0] ml-3 space-y-6">
                 {claim.memberHistory?.map((h, i) => (
-                  <div key={i} className="relative pl-8 group">
-                    <div className={`absolute -left-[11px] top-1 w-5 h-5 rounded-full border-4 border-white shadow-sm transition-transform group-hover:scale-125 ${h.flagged ? 'bg-[#F59E0B] glow-amber' : 'bg-[#94A3B8]'}`}></div>
-                    <div className={`p-4 rounded-xl transition-all duration-300 ${h.flagged ? 'bg-gradient-to-r from-[#FFFBEB] to-transparent border border-[#F59E0B]/30 shadow-md' : 'bg-white border border-[#E2E8F0] hover:border-[#CBD5E1] hover:shadow-sm'}`}>
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="text-xs font-bold text-[#64748B] tracking-wider uppercase">{h.date}</div>
-                        <div className="text-xs font-medium text-[#64748B] bg-[#F4F7FB] px-2 py-1 rounded">{h.provider}</div>
-                      </div>
-                      <div className={`text-base font-bold mb-1 ${h.flagged ? 'text-[#F59E0B]' : 'text-[#1E293B]'}`}>
-                        <span className="font-mono mr-2">{h.code}</span> {h.diagnosis}
-                      </div>
-                      <div className={`text-sm ${h.flagged ? 'text-[#B45309] font-medium' : 'text-[#64748B]'}`}>{h.desc}</div>
+                  <div key={i} className="relative pl-6">
+                    <div className={`absolute -left-[9px] top-1 w-4 h-4 rounded-full border-2 border-white ${h.flagged ? 'bg-[#DC2626]' : 'bg-[#64748B]'}`}></div>
+                    <div className={`p-3 rounded-lg ${h.flagged ? 'bg-[#FEF2F2] border border-[#DC2626]/20' : 'bg-[#F4F7FB] border border-[#E2E8F0]'}`}>
+                      <div className="text-xs text-[#64748B] mb-1">{h.date} • {h.provider}</div>
+                      <div className={`text-sm font-medium ${h.flagged ? 'text-[#DC2626]' : 'text-[#1E293B]'}`}>{h.diagnosis}</div>
+                      <div className={`text-xs mt-1 ${h.flagged ? 'text-[#DC2626] font-semibold' : 'text-[#64748B]'}`}>{h.desc}</div>
                     </div>
                   </div>
                 ))}
@@ -846,58 +818,45 @@ export default function ClaimGuardApp() {
           </div>
 
           {/* RIGHT COLUMN */}
-          <div className="lg:col-span-5 space-y-8">
-            <div className="glass-card rounded-2xl overflow-hidden shadow-xl shadow-[#1B3A6B]/10 border border-[#1B3A6B]/20">
-              <div className="bg-gradient-to-r from-[#1B3A6B] to-[#0f203b] px-6 py-5 border-b border-white/10">
-                <h2 className="text-white font-bold flex items-center gap-3 text-lg tracking-wide">
-                  <ShieldAlert size={20} className="text-[#0D7377]" /> AI Anomaly Engine
+          <div className="space-y-6">
+            <div className="glass-card overflow-hidden">
+              <div className="bg-[#0D7377] px-6 py-4">
+                <h2 className="text-white font-semibold flex items-center gap-2">
+                  <ShieldAlert size={18} /> ClaimGuard Anomaly Explanation
                 </h2>
               </div>
-              <div className="p-1 bg-[#0f172a]">
-                <div className="ai-terminal p-6 rounded-xl min-h-[280px] flex flex-col">
-                  <div className="flex items-center gap-2 mb-6">
-                    <div className="w-3 h-3 rounded-full bg-[#F59E0B] glow-amber"></div>
-                    <div className="text-[#F59E0B] font-mono text-xs font-bold tracking-widest uppercase">HCC Upcoding Detected</div>
-                  </div>
-                  <div className="text-[#e2e8f0] font-mono text-sm leading-relaxed flex-1">
-                    <span className={!isComplete ? "typing-cursor" : "typing-cursor-hidden"}>
-                      {displayedText}
-                    </span>
-                  </div>
-                  {isComplete && (
-                    <div className="mt-6 pt-4 border-t border-white/10 flex items-center justify-between animate-fade-in-up">
-                      <span className="text-[#64748B] font-mono text-[10px]">CONFIDENCE SCORE</span>
-                      <span className="text-[#0D7377] font-mono font-bold text-lg glow-teal">94.2%</span>
-                    </div>
-                  )}
+              <div className="p-6">
+                <div className="inline-block bg-[#FFFBEB] text-[#F59E0B] border border-[#F59E0B]/20 px-3 py-1 rounded-md text-xs font-bold mb-4">
+                  HCC ANOMALY
+                </div>
+                <div className="bg-[#1E293B] text-[#CADCFC] p-4 rounded-lg font-mono text-sm leading-relaxed min-h-[160px]">
+                  <span className={!isComplete ? "typing-cursor" : "typing-cursor-hidden"}>
+                    {displayedText}
+                  </span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-gradient-to-r from-[#FFFBEB] to-white rounded-2xl border border-[#F59E0B]/30 p-6 shadow-lg shadow-[#F59E0B]/5 flex items-center gap-5">
-              <div className="w-12 h-12 rounded-full bg-[#F59E0B]/10 flex items-center justify-center shrink-0">
-                <AlertTriangle size={24} className="text-[#F59E0B]" />
-              </div>
+            <div className="bg-[#FFFBEB] rounded-[10px] border border-[#F59E0B]/30 p-6 flex items-start gap-4">
+              <AlertTriangle size={24} className="text-[#F59E0B] shrink-0 mt-1" />
               <div>
-                <h3 className="text-[10px] font-bold text-[#B45309] uppercase tracking-wider mb-1">Provider Risk Metric</h3>
-                <p className="text-[#1E293B] font-black text-lg">{claim.providerHCCRate}</p>
+                <h3 className="font-semibold text-[#1E293B] mb-1">Provider HCC 18/19 Rate</h3>
+                <p className="text-[#F59E0B] font-medium">{claim.providerHCCRate}</p>
               </div>
             </div>
 
-            <div className="glass-card rounded-2xl p-8">
-              <h3 className="font-bold text-[#1E293B] text-lg mb-6">Reviewer Action Required</h3>
-              <div className="flex flex-col gap-4">
-                <button onClick={() => logDecision(claim.id, 'Escalate to SIU')} className="w-full bg-gradient-to-r from-[#DC2626] to-[#b91c1c] hover:from-[#b91c1c] hover:to-[#991b1b] text-white py-4 rounded-xl text-sm font-bold tracking-wide transition-all shadow-lg shadow-[#DC2626]/30 hover:shadow-[#DC2626]/50 hover:-translate-y-0.5 flex items-center justify-center gap-2">
-                  <ShieldAlert size={18} /> Escalate to SIU
+            <div className="glass-card p-6">
+              <h3 className="font-semibold text-[#1E293B] mb-4">Reviewer Action</h3>
+              <div className="flex gap-3">
+                <button onClick={() => logDecision(claim.id, 'Mark as Valid')} className="flex-1 bg-[#F0FDF4] hover:bg-[#dcfce7] text-[#059669] border border-[#059669]/30 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+                  Mark as Valid
                 </button>
-                <div className="grid grid-cols-2 gap-4">
-                  <button onClick={() => logDecision(claim.id, 'Flag as Data Error')} className="bg-white hover:bg-[#FFFBEB] text-[#F59E0B] border-2 border-[#F59E0B]/20 hover:border-[#F59E0B] py-3 rounded-xl text-sm font-bold transition-all">
-                    Data Error
-                  </button>
-                  <button onClick={() => logDecision(claim.id, 'Mark as Valid')} className="bg-white hover:bg-[#F0FDF4] text-[#059669] border-2 border-[#059669]/20 hover:border-[#059669] py-3 rounded-xl text-sm font-bold transition-all">
-                    Mark Valid
-                  </button>
-                </div>
+                <button onClick={() => logDecision(claim.id, 'Flag as Data Error')} className="flex-1 bg-[#FFFBEB] hover:bg-[#fef3c7] text-[#F59E0B] border border-[#F59E0B]/30 py-2.5 rounded-lg text-sm font-semibold transition-colors">
+                  Flag as Data Error
+                </button>
+                <button onClick={() => logDecision(claim.id, 'Escalate to SIU')} className="flex-1 bg-[#DC2626] hover:bg-[#b91c1c] text-white py-2.5 rounded-lg text-sm font-semibold transition-colors shadow-sm">
+                  Escalate to SIU
+                </button>
               </div>
             </div>
           </div>
@@ -908,94 +867,94 @@ export default function ClaimGuardApp() {
 
   const DashboardScreen = () => {
     return (
-      <div className="animate-fade-in-up relative z-10">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gradient-navy tracking-tight mb-1">Review Dashboard</h1>
-          <p className="text-[#64748B] font-medium">Batch: November–December 2024 | Live Updates Active</p>
+      <div className="animate-fade-in-up">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-[#1B3A6B]">ClaimGuard Pattern Pulse — Review Dashboard</h1>
+          <p className="text-[#64748B]">Batch: November–December 2024 | Last updated: just now</p>
         </div>
 
-        <div className="grid grid-cols-4 gap-6 mb-10">
-          {[
-            { count: dashboardCounts.totalIngested, label: "Total Ingested", color: "#1B3A6B", bg: "bg-[#1B3A6B]/5" },
-            { count: dashboardCounts.autoCleared, label: "Auto-Cleared", color: "#059669", bg: "bg-[#059669]/5" },
-            { count: dashboardCounts.escalatedToSIU, label: "Escalated to SIU", color: "#DC2626", bg: "bg-[#DC2626]/5" },
-            { count: dashboardCounts.dataError, label: "Data Errors", color: "#F59E0B", bg: "bg-[#F59E0B]/5" }
-          ].map((stat, i) => (
-            <div key={i} className="glass-card rounded-2xl p-6 relative overflow-hidden group hover:-translate-y-1 transition-transform duration-300">
-              <div className={`absolute top-0 left-0 w-full h-1`} style={{ backgroundColor: stat.color }}></div>
-              <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full blur-2xl opacity-50 transition-opacity group-hover:opacity-80 ${stat.bg}`}></div>
-              <div className="text-[42px] font-black leading-none mb-2" style={{ color: stat.color }}>{stat.count}</div>
-              <div className="text-[12px] text-[#64748B] uppercase tracking-wider font-bold">{stat.label}</div>
-            </div>
-          ))}
+        <div className="grid grid-cols-4 gap-6 mb-8">
+          <div className="glass-card p-6 border-t-4 border-t-[#1B3A6B]">
+            <div className="text-[36px] font-bold text-[#1E293B] leading-none mb-1">{globalState.totalIngested}</div>
+            <div className="text-[12px] text-[#64748B] uppercase tracking-wide font-medium">Total Ingested</div>
+          </div>
+          <div className="glass-card p-6 border-t-4 border-t-[#059669]">
+            <div className="text-[36px] font-bold text-[#059669] leading-none mb-1">{globalState.autoCleared}</div>
+            <div className="text-[12px] text-[#64748B] uppercase tracking-wide font-medium">Auto-Cleared</div>
+          </div>
+          <div className="glass-card p-6 border-t-4 border-t-[#DC2626]">
+            <div className="text-[36px] font-bold text-[#DC2626] leading-none mb-1">{globalState.escalatedToSIU}</div>
+            <div className="text-[12px] text-[#64748B] uppercase tracking-wide font-medium">Escalated to SIU</div>
+          </div>
+          <div className="glass-card p-6 border-t-4 border-t-[#F59E0B]">
+            <div className="text-[36px] font-bold text-[#F59E0B] leading-none mb-1">{globalState.dataError}</div>
+            <div className="text-[12px] text-[#64748B] uppercase tracking-wide font-medium">Data Errors</div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
-          <div className="glass-card rounded-2xl p-8">
-            <h3 className="font-bold text-[#1E293B] text-lg mb-10">Anomaly Breakdown</h3>
-            <div className="flex items-center justify-center gap-16">
-              <div className="w-56 h-56 donut-chart relative flex items-center justify-center">
-                <div className="w-40 h-40 bg-white rounded-full flex flex-col items-center justify-center shadow-inner z-10">
-                  <span className="text-4xl font-black text-[#1B3A6B]">4</span>
-                  <span className="text-xs text-[#64748B] font-bold uppercase tracking-wider mt-1">Total Claims</span>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <div className="glass-card p-6">
+            <h3 className="font-semibold text-[#1E293B] mb-8">Anomaly Breakdown</h3>
+            <div className="flex items-center justify-center gap-12">
+              <div className="w-48 h-48 donut-chart relative flex items-center justify-center shadow-inner">
+                <div className="w-32 h-32 bg-white rounded-full flex flex-col items-center justify-center shadow-sm">
+                  <span className="text-3xl font-bold text-[#1B3A6B]">4</span>
+                  <span className="text-xs text-[#64748B] font-medium">Total Claims</span>
                 </div>
               </div>
-              <div className="space-y-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-5 h-5 rounded-full bg-[#DC2626] glow-red"></div>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 rounded bg-[#DC2626]"></div>
                   <div>
-                    <div className="text-base font-bold text-[#1E293B]">Location Conflict</div>
-                    <div className="text-sm text-[#64748B] font-medium">50% (2 claims)</div>
+                    <div className="text-sm font-semibold text-[#1E293B]">Location Conflict</div>
+                    <div className="text-xs text-[#64748B]">50% (2 claims)</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="w-5 h-5 rounded-full bg-[#F59E0B] glow-amber"></div>
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 rounded bg-[#F59E0B]"></div>
                   <div>
-                    <div className="text-base font-bold text-[#1E293B]">HCC Anomaly</div>
-                    <div className="text-sm text-[#64748B] font-medium">25% (1 claim)</div>
+                    <div className="text-sm font-semibold text-[#1E293B]">HCC Anomaly</div>
+                    <div className="text-xs text-[#64748B]">25% (1 claim)</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="w-5 h-5 rounded-full bg-[#059669] glow-green"></div>
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 rounded bg-[#059669]"></div>
                   <div>
-                    <div className="text-base font-bold text-[#1E293B]">Clean</div>
-                    <div className="text-sm text-[#64748B] font-medium">25% (1 claim)</div>
+                    <div className="text-sm font-semibold text-[#1E293B]">Clean</div>
+                    <div className="text-xs text-[#64748B]">25% (1 claim)</div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="glass-card rounded-2xl p-8 flex flex-col h-[400px]">
-            <h3 className="font-bold text-[#1E293B] text-lg mb-6">Reviewer Activity Feed</h3>
-            <div className="flex-1 overflow-y-auto pr-4 custom-scrollbar">
-              {decisions.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-[#64748B] text-sm text-center px-8 opacity-60">
-                  <Activity size={32} className="mb-3" />
-                  <p>No decisions logged yet.<br/>Review flagged claims to populate this feed.</p>
+          <div className="glass-card p-6 flex flex-col h-[320px]">
+            <h3 className="font-semibold text-[#1E293B] mb-4">Reviewer Activity Feed</h3>
+            <div className="flex-1 overflow-y-auto pr-2">
+              {globalState.reviewerDecisions.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-[#64748B] text-sm italic text-center px-8">
+                  No decisions logged yet — review flagged claims to see outcomes here.
                 </div>
               ) : (
-                <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-gradient-to-b before:from-[#E2E8F0] before:to-transparent">
-                  {decisions.map((d, i) => {
+                <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
+                  {globalState.reviewerDecisions.map((d, i) => {
                     const isEscalate = d.decision === 'Escalate to SIU';
                     const isError = d.decision === 'Flag as Data Error';
                     
                     return (
-                      <div key={i} className="relative flex items-start gap-6 animate-fade-in-up">
-                        <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white shrink-0 shadow-md z-10 ${
-                          isEscalate ? 'bg-[#DC2626] text-white glow-red' : 
-                          isError ? 'bg-[#F59E0B] text-white glow-amber' : 'bg-[#059669] text-white glow-green'
+                      <div key={i} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                        <div className={`flex items-center justify-center w-10 h-10 rounded-full border-4 border-white shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm z-10 ${
+                          isEscalate ? 'bg-[#DC2626] text-white' : 
+                          isError ? 'bg-[#F59E0B] text-white' : 'bg-[#059669] text-white'
                         }`}>
                           {isEscalate ? <ShieldAlert size={16} /> : isError ? <AlertTriangle size={16} /> : <CheckCircle size={16} />}
                         </div>
-                        <div className="flex-1 bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-sm hover:shadow-md transition-shadow">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="font-bold text-[#1B3A6B]">{d.claimId}</span>
-                            <span className="text-[10px] font-bold text-[#64748B] bg-[#F4F7FB] px-2 py-1 rounded-md">
-                              {new Date(d.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                            </span>
+                        <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-[#F4F7FB] p-3 rounded border border-[#E2E8F0] shadow-sm">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-bold text-[#1E293B] text-sm">{d.claimId}</span>
+                            <span className="text-[10px] text-[#64748B]">{new Date(d.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                           </div>
-                          <div className={`text-sm font-bold ${
+                          <div className={`text-xs font-medium ${
                             isEscalate ? 'text-[#DC2626]' : isError ? 'text-[#F59E0B]' : 'text-[#059669]'
                           }`}>
                             {d.decision}
@@ -1010,9 +969,148 @@ export default function ClaimGuardApp() {
           </div>
         </div>
 
-        <div className="bg-gradient-to-r from-[#0D7377] to-[#11999E] text-white rounded-2xl p-5 text-center shadow-xl shadow-[#0D7377]/20 flex items-center justify-center gap-3">
-          <Zap size={20} className="fill-white/50" />
-          <p className="font-semibold tracking-wide">ClaimGuard feedback loop active — reviewer decisions will improve future anomaly detection accuracy.</p>
+        <div className="bg-[#0D7377] text-white rounded-[10px] p-4 text-center shadow-md">
+          <p className="font-medium text-sm">ClaimGuard feedback loop active — reviewer decisions will improve future anomaly detection accuracy.</p>
+        </div>
+      </div>
+    );
+  };
+
+  const ComplianceScreen = () => {
+    return (
+      <div className="animate-fade-in-up">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-[#1B3A6B]">Compliance Dashboard — Payment Integrity Overview</h1>
+          <p className="text-[#64748B]">Medicare Advantage | Batch: November–December 2024</p>
+        </div>
+
+        {/* Row 1: KPIs */}
+        <div className="grid grid-cols-4 gap-6 mb-6">
+          <div className="glass-card p-6 border-t-4 border-t-[#1B3A6B]">
+            <div className="text-[32px] font-bold text-[#1E293B] leading-none mb-2">$23.67B</div>
+            <div className="text-[11px] text-[#64748B] uppercase tracking-wide font-medium">MA Improper Payments 2025 (Industry)</div>
+          </div>
+          <div className="glass-card p-6 border-t-4 border-t-[#DC2626]">
+            <div className="text-[32px] font-bold text-[#DC2626] leading-none mb-2">$47,200</div>
+            <div className="text-[11px] text-[#64748B] uppercase tracking-wide font-medium">Estimated RAF Risk Exposure — This Batch</div>
+          </div>
+          <div className="glass-card p-6 border-t-4 border-t-[#F59E0B]">
+            <div className="text-[32px] font-bold text-[#F59E0B] leading-none mb-2">3</div>
+            <div className="text-[11px] text-[#64748B] uppercase tracking-wide font-medium">Claims Requiring Review Before Submission</div>
+          </div>
+          <div className="glass-card p-6 border-t-4 border-t-[#059669]">
+            <div className="text-[32px] font-bold text-[#059669] leading-none mb-2">1</div>
+            <div className="text-[11px] text-[#64748B] uppercase tracking-wide font-medium">Claims Cleared — No Action Needed</div>
+          </div>
+        </div>
+
+        {/* Row 2: Provider Alert & Risk Summary */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div className="glass-card p-6 border-l-4 border-l-[#DC2626]">
+            <h2 className="text-lg font-bold text-[#DC2626] mb-4">Provider Anomaly Alert</h2>
+            <div className="space-y-3 text-sm">
+              <div className="font-medium text-[#1E293B] text-base">Dr. Marcus Bell — Endocrinology — Nashville TN</div>
+              <div className="flex justify-between border-b border-[#E2E8F0] pb-2">
+                <span className="text-[#64748B]">HCC 18/19 Rate:</span>
+                <span className="font-bold text-[#F59E0B]">4.2x above specialty peer average</span>
+              </div>
+              <div className="flex justify-between border-b border-[#E2E8F0] pb-2">
+                <span className="text-[#64748B]">Flagged Claims:</span>
+                <span className="font-medium text-[#1E293B]">1 (CG-2024-00934)</span>
+              </div>
+              <div className="flex justify-between border-b border-[#E2E8F0] pb-2">
+                <span className="text-[#64748B]">Status:</span>
+                <span className="bg-[#FFFBEB] text-[#F59E0B] px-2 py-0.5 rounded text-xs font-bold">UNDER REVIEW</span>
+              </div>
+              <div className="bg-[#FEF2F2] text-[#DC2626] p-3 rounded-lg text-xs mt-4">
+                <strong>Note:</strong> Medical record review initiated. Encounter file hold recommended pending documentation validation.
+              </div>
+              <button 
+                onClick={() => navigate('/claim/CG-2024-00934')}
+                className="w-full mt-4 bg-[#0D7377] text-white py-2 rounded-lg font-medium hover:bg-[#0a5c5f] transition-colors"
+              >
+                View Claim Detail
+              </button>
+            </div>
+          </div>
+
+          <div className="glass-card p-6">
+            <h2 className="text-lg font-bold text-[#1E293B] mb-4">RAF Integrity Risk Summary</h2>
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-3 h-3 rounded-full bg-[#DC2626] mt-1 shrink-0"></div>
+                <div className="text-sm">
+                  <span className="font-bold text-[#1E293B]">Location Conflict Risk — 2 claims</span>
+                  <p className="text-[#64748B]">Member M-44219 — Same-day impossibility confirmed</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-3 h-3 rounded-full bg-[#F59E0B] mt-1 shrink-0"></div>
+                <div className="text-sm">
+                  <span className="font-bold text-[#1E293B]">HCC Anomaly Risk — 1 claim</span>
+                  <p className="text-[#64748B]">Member M-61033 — Unsupported HCC 18 submission</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-3 h-3 rounded-full bg-[#059669] mt-1 shrink-0"></div>
+                <div className="text-sm">
+                  <span className="font-bold text-[#1E293B]">Clean Claims — 1 claim</span>
+                  <p className="text-[#64748B]">Member M-88421 — No anomalies detected</p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6 pt-4 border-t border-[#E2E8F0]">
+              <div className="text-sm font-bold text-[#DC2626]">RADV Audit Risk: HIGH</div>
+              <div className="text-xs text-[#64748B]">3 of 4 claims require pre-submission review</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Row 3: Audit Readiness */}
+        <div className="glass-card p-6 mb-6">
+          <h2 className="text-lg font-bold text-[#1E293B] mb-4">Audit Readiness — RADV Preparation Status</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="flex items-start gap-3 bg-[#F0FDF4] p-3 rounded-lg border border-[#059669]/20">
+              <Check className="text-[#059669] shrink-0 mt-0.5" size={18} />
+              <div className="text-sm text-[#059669]">
+                <strong>Reviewer Decisions Logged</strong> — All flagged claims have documented reviewer decisions
+              </div>
+            </div>
+            <div className="flex items-start gap-3 bg-[#F0FDF4] p-3 rounded-lg border border-[#059669]/20">
+              <Check className="text-[#059669] shrink-0 mt-0.5" size={18} />
+              <div className="text-sm text-[#059669]">
+                <strong>Explanation Trail</strong> — Plain-English reason codes generated for all flags
+              </div>
+            </div>
+            <div className="flex items-start gap-3 bg-[#FFFBEB] p-3 rounded-lg border border-[#F59E0B]/20">
+              <AlertTriangle className="text-[#F59E0B] shrink-0 mt-0.5" size={18} />
+              <div className="text-sm text-[#F59E0B]">
+                <strong>Medical Record Review</strong> — Pending for CG-2024-00934
+              </div>
+            </div>
+            <div className="flex items-start gap-3 bg-[#FFFBEB] p-3 rounded-lg border border-[#F59E0B]/20">
+              <AlertTriangle className="text-[#F59E0B] shrink-0 mt-0.5" size={18} />
+              <div className="text-sm text-[#F59E0B]">
+                <strong>Encounter File Status</strong> — Hold recommended for 2 claims pending SIU review
+              </div>
+            </div>
+          </div>
+          <div className="bg-[#1B3A6B]/5 border-l-4 border-[#1B3A6B] p-4 rounded-r-lg text-sm text-[#1B3A6B]">
+            <strong>CMS has announced RADV audits for all MA contracts PY2018-2024.</strong> Estimated extrapolation exposure if HCC 18 unsupported: $47,200+
+          </div>
+        </div>
+
+        {/* Row 4: Banner */}
+        <div className="bg-[#0D7377] text-white rounded-[10px] p-5 flex items-center justify-between shadow-md">
+          <div className="font-medium">ClaimGuard Pattern Pulse — Protecting your RAF integrity before CMS submission</div>
+          <div className="flex gap-3">
+            <button onClick={() => showToast("This feature coming in Phase 2", "green")} className="px-4 py-2 border border-white rounded-lg text-sm font-medium hover:bg-white/10 transition-colors">
+              Export Report
+            </button>
+            <button onClick={() => showToast("This feature coming in Phase 2", "green")} className="px-4 py-2 bg-white text-[#0D7377] rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors">
+              Schedule Review
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1023,25 +1121,22 @@ export default function ClaimGuardApp() {
   return (
     <div className="claimguard-app min-h-screen flex flex-col relative">
       <style dangerouslySetInnerHTML={{ __html: styles }} />
-      <BackgroundMesh />
       
-      <nav className="glass-nav fixed top-0 left-0 right-0 h-[64px] flex items-center justify-between px-8 z-50">
-        <div className="text-white font-black text-[20px] tracking-tight flex items-center gap-2">
-          <ShieldAlert size={24} className="text-[#0D7377]" /> ClaimGuard Pattern Pulse
-        </div>
-        <div className="bg-white/10 border border-white/20 text-[#CADCFC] px-4 py-1.5 rounded-full text-xs font-bold tracking-wider uppercase shadow-inner">
+      <nav className="fixed top-0 left-0 right-0 h-[56px] bg-[#1B3A6B] flex items-center justify-between px-6 z-50">
+        <div className="text-white font-bold text-[18px]">ClaimGuard Pattern Pulse</div>
+        <div className="bg-white/10 text-[#CADCFC] px-3 py-1 rounded-full text-xs font-medium">
           Demo Mode
         </div>
       </nav>
       
-      <div className="flex flex-1 pt-[64px]">
-        <aside className="glass-sidebar fixed top-[64px] left-0 w-[260px] h-[calc(100vh-64px)] py-8 z-40 flex flex-col">
-          <div className="px-6 mb-4 text-[10px] font-bold text-[#CADCFC]/50 uppercase tracking-widest">Main Menu</div>
-          <div className="space-y-2 px-4">
+      <div className="flex flex-1 pt-[56px]">
+        <aside className="fixed top-[56px] left-0 w-[240px] h-[calc(100vh-56px)] bg-[#1B3A6B] py-6 z-40">
+          <div className="space-y-1">
             {[
               { id: '/ingestion', label: 'Ingestion', icon: Database },
               { id: '/anomaly-report', label: 'Anomaly Report', icon: AlertTriangle },
-              { id: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+              { id: '/dashboard', label: 'Reviewer Dashboard', icon: LayoutDashboard },
+              { id: '/compliance', label: 'Compliance Dashboard', icon: ShieldAlert },
             ].map((item) => {
               const Icon = item.icon;
               const isActive = currentRoute === item.id || currentRoute.startsWith(item.id + '/');
@@ -1049,13 +1144,13 @@ export default function ClaimGuardApp() {
                 <button
                   key={item.id}
                   onClick={() => navigate(item.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-bold transition-all duration-300 ${
+                  className={`w-full flex items-center gap-3 px-6 py-3 text-sm transition-colors ${
                     isActive 
-                      ? 'bg-gradient-to-r from-[#0D7377] to-[#11999E] text-white shadow-lg shadow-[#0D7377]/30 translate-x-1' 
-                      : 'text-[#CADCFC]/70 hover:bg-white/5 hover:text-white hover:translate-x-1'
+                      ? 'bg-[#0D7377]/30 text-white border-l-[3px] border-[#0D7377]' 
+                      : 'text-white/70 hover:bg-white/5 hover:text-white border-l-[3px] border-transparent'
                   }`}
                 >
-                  <Icon size={18} className={isActive ? 'text-white' : 'text-[#CADCFC]/50'} />
+                  <Icon size={18} />
                   {item.label}
                 </button>
               );
@@ -1063,27 +1158,24 @@ export default function ClaimGuardApp() {
           </div>
         </aside>
         
-        <main className="flex-1 ml-[260px] p-10 min-h-[calc(100vh-64px)] relative z-10">
+        <main className="flex-1 ml-[240px] p-[28px] min-h-[calc(100vh-56px)] relative z-10">
           <div className="max-w-6xl mx-auto">
             {currentRoute === '/ingestion' && <IngestionScreen />}
             {currentRoute === '/anomaly-report' && <AnomalyReportScreen />}
             {currentRoute === '/claim/CG-2024-00587A' && <ClaimLocationScreen />}
             {currentRoute === '/claim/CG-2024-00934' && <ClaimHCCScreen />}
             {currentRoute === '/dashboard' && <DashboardScreen />}
+            {currentRoute === '/compliance' && <ComplianceScreen />}
           </div>
         </main>
       </div>
       
-      <footer className="bg-[#0f203b] text-[#CADCFC]/60 text-[11px] font-medium tracking-wide text-center py-4 mt-auto z-50 relative border-t border-white/5">
+      <footer className="bg-[#1B3A6B] text-[#CADCFC] text-[11px] text-center py-3 mt-auto z-50 relative">
         ClaimGuard Pattern Pulse | AI PM Bootcamp — Marily Nika | Demo Day 2026
       </footer>
       
-      {toast && (
-        <div className="fixed top-24 right-8 bg-[#059669] text-white px-5 py-4 rounded-xl shadow-2xl shadow-[#059669]/30 flex items-center gap-3 z-50 animate-fade-in-up border border-white/20">
-          <CheckCircle size={20} />
-          <span className="text-sm font-bold tracking-wide">{toast}</span>
-        </div>
-      )}
+      <ToastComponent />
+      <NotificationPanel />
     </div>
   );
 }
