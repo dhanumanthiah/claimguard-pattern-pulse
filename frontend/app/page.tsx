@@ -4,7 +4,7 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { 
   Database, AlertTriangle, LayoutDashboard, ChevronRight, 
   CheckCircle, MapPin, Clock, ShieldAlert, Activity, Zap,
-  Upload, File, X, Bell, FileText, AlertCircle, Check
+  Upload, File, X, Bell, FileText, AlertCircle, Check, Plus
 } from 'lucide-react';
 
 // --- HARDCODED DATA ---
@@ -462,64 +462,34 @@ export default function ClaimGuardApp() {
 
     return (
       <div className="animate-fade-in-up">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-[#1B3A6B]">Claims Ingestion — Batch Upload</h1>
-          <p className="text-[#64748B]">
-            {uploadState === 'loaded' ? '4 claims loaded for analysis' : 'Upload datasets to begin analysis'}
-          </p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-[#1B3A6B]">Claims Ingestion — Batch Upload</h1>
+            <p className="text-[#64748B]">
+              {uploadState === 'loaded' ? '4 claims loaded for analysis' : 'No claims loaded'}
+            </p>
+          </div>
+          {uploadState === 'initial' && (
+            <button 
+              onClick={handleSimulatedUpload}
+              className="bg-[#0D7377] text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 hover:bg-[#0a5c5f] transition-colors shadow-sm"
+            >
+              <Plus size={18} /> Add Claims
+            </button>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 animate-fade-in-up">
-          {/* Simulated Claims Upload */}
-          <div 
-            onClick={handleSimulatedUpload}
-            className={`glass-card p-10 border-2 border-dashed transition-all duration-300 cursor-pointer flex flex-col items-center justify-center text-center group ${uploadState === 'loaded' ? 'border-[#059669]/30 bg-[#F0FDF4]' : 'border-[#1B3A6B]/20 hover:border-[#0D7377] hover:bg-white/90'}`}
-          >
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-transform duration-300 ${uploadState === 'loaded' ? 'bg-[#059669]/10' : 'bg-[#1B3A6B]/5 group-hover:scale-110'}`}>
-              {uploadState === 'loaded' ? (
-                <CheckCircle size={28} className="text-[#059669]" />
-              ) : (
-                <Upload size={28} className="text-[#1B3A6B] group-hover:text-[#0D7377] transition-colors" />
-              )}
+        {uploadState === 'initial' && (
+          <div className="glass-card p-16 flex flex-col items-center justify-center text-center border-2 border-dashed border-[#E2E8F0] mb-8">
+            <div className="w-16 h-16 bg-[#F4F7FB] rounded-full flex items-center justify-center mb-4">
+              <Database size={28} className="text-[#64748B]" />
             </div>
-            <h3 className="text-lg font-bold text-[#1E293B] mb-2">
-              {uploadState === 'loaded' ? 'claims_batch_nov24.csv' : 'Upload Claims Data'}
-            </h3>
-            <p className="text-[#64748B] text-sm mb-4">
-              {uploadState === 'loaded' ? '1.2 MB • Processed successfully' : 'Drag & drop your claims CSV file here, or click to browse.'}
+            <h3 className="text-lg font-bold text-[#1E293B] mb-2">No Data Ingested</h3>
+            <p className="text-[#64748B] text-sm max-w-md">
+              Click the "Add Claims" button above to load the latest batch of Medicare Advantage claims and member demographics for AI analysis.
             </p>
-            {uploadState !== 'loaded' && (
-              <span className="bg-[#1B3A6B]/5 text-[#1B3A6B] px-4 py-2 rounded-lg text-sm font-bold group-hover:bg-[#0D7377] group-hover:text-white transition-colors">
-                Select File
-              </span>
-            )}
           </div>
-
-          {/* Simulated Member Upload */}
-          <div 
-            onClick={handleSimulatedUpload}
-            className={`glass-card p-10 border-2 border-dashed transition-all duration-300 cursor-pointer flex flex-col items-center justify-center text-center group ${uploadState === 'loaded' ? 'border-[#059669]/30 bg-[#F0FDF4]' : 'border-[#1B3A6B]/20 hover:border-[#0D7377] hover:bg-white/90'}`}
-          >
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-transform duration-300 ${uploadState === 'loaded' ? 'bg-[#059669]/10' : 'bg-[#1B3A6B]/5 group-hover:scale-110'}`}>
-              {uploadState === 'loaded' ? (
-                <CheckCircle size={28} className="text-[#059669]" />
-              ) : (
-                <Database size={28} className="text-[#1B3A6B] group-hover:text-[#0D7377] transition-colors" />
-              )}
-            </div>
-            <h3 className="text-lg font-bold text-[#1E293B] mb-2">
-              {uploadState === 'loaded' ? 'member_roster_q4.csv' : 'Upload Member Data'}
-            </h3>
-            <p className="text-[#64748B] text-sm mb-4">
-              {uploadState === 'loaded' ? '3.4 MB • Processed successfully' : 'Drag & drop your member demographics CSV file here.'}
-            </p>
-            {uploadState !== 'loaded' && (
-              <span className="bg-[#1B3A6B]/5 text-[#1B3A6B] px-4 py-2 rounded-lg text-sm font-bold group-hover:bg-[#0D7377] group-hover:text-white transition-colors">
-                Select File
-              </span>
-            )}
-          </div>
-        </div>
+        )}
 
         {uploadState === 'uploading' && (
           <div className="glass-card p-16 flex flex-col items-center justify-center mb-8 animate-fade-in-up">
