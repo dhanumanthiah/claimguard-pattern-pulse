@@ -469,39 +469,57 @@ export default function ClaimGuardApp() {
           </p>
         </div>
 
-        {uploadState === 'initial' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 animate-fade-in-up">
-            {/* Simulated Claims Upload */}
-            <div 
-              onClick={handleSimulatedUpload}
-              className="glass-card p-10 border-2 border-dashed border-[#1B3A6B]/20 hover:border-[#0D7377] hover:bg-white/90 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center text-center group"
-            >
-              <div className="w-16 h-16 bg-[#1B3A6B]/5 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 animate-fade-in-up">
+          {/* Simulated Claims Upload */}
+          <div 
+            onClick={handleSimulatedUpload}
+            className={`glass-card p-10 border-2 border-dashed transition-all duration-300 cursor-pointer flex flex-col items-center justify-center text-center group ${uploadState === 'loaded' ? 'border-[#059669]/30 bg-[#F0FDF4]' : 'border-[#1B3A6B]/20 hover:border-[#0D7377] hover:bg-white/90'}`}
+          >
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-transform duration-300 ${uploadState === 'loaded' ? 'bg-[#059669]/10' : 'bg-[#1B3A6B]/5 group-hover:scale-110'}`}>
+              {uploadState === 'loaded' ? (
+                <CheckCircle size={28} className="text-[#059669]" />
+              ) : (
                 <Upload size={28} className="text-[#1B3A6B] group-hover:text-[#0D7377] transition-colors" />
-              </div>
-              <h3 className="text-lg font-bold text-[#1E293B] mb-2">Upload Claims Data</h3>
-              <p className="text-[#64748B] text-sm mb-4">Drag & drop your claims CSV file here, or click to browse.</p>
+              )}
+            </div>
+            <h3 className="text-lg font-bold text-[#1E293B] mb-2">
+              {uploadState === 'loaded' ? 'claims_batch_nov24.csv' : 'Upload Claims Data'}
+            </h3>
+            <p className="text-[#64748B] text-sm mb-4">
+              {uploadState === 'loaded' ? '1.2 MB • Processed successfully' : 'Drag & drop your claims CSV file here, or click to browse.'}
+            </p>
+            {uploadState !== 'loaded' && (
               <span className="bg-[#1B3A6B]/5 text-[#1B3A6B] px-4 py-2 rounded-lg text-sm font-bold group-hover:bg-[#0D7377] group-hover:text-white transition-colors">
                 Select File
               </span>
-            </div>
-
-            {/* Simulated Member Upload */}
-            <div 
-              onClick={handleSimulatedUpload}
-              className="glass-card p-10 border-2 border-dashed border-[#1B3A6B]/20 hover:border-[#0D7377] hover:bg-white/90 transition-all duration-300 cursor-pointer flex flex-col items-center justify-center text-center group"
-            >
-              <div className="w-16 h-16 bg-[#1B3A6B]/5 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
-                <Database size={28} className="text-[#1B3A6B] group-hover:text-[#0D7377] transition-colors" />
-              </div>
-              <h3 className="text-lg font-bold text-[#1E293B] mb-2">Upload Member Data</h3>
-              <p className="text-[#64748B] text-sm mb-4">Drag & drop your member demographics CSV file here.</p>
-              <span className="bg-[#1B3A6B]/5 text-[#1B3A6B] px-4 py-2 rounded-lg text-sm font-bold group-hover:bg-[#0D7377] group-hover:text-white transition-colors">
-                Select File
-              </span>
-            </div>
+            )}
           </div>
-        )}
+
+          {/* Simulated Member Upload */}
+          <div 
+            onClick={handleSimulatedUpload}
+            className={`glass-card p-10 border-2 border-dashed transition-all duration-300 cursor-pointer flex flex-col items-center justify-center text-center group ${uploadState === 'loaded' ? 'border-[#059669]/30 bg-[#F0FDF4]' : 'border-[#1B3A6B]/20 hover:border-[#0D7377] hover:bg-white/90'}`}
+          >
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-transform duration-300 ${uploadState === 'loaded' ? 'bg-[#059669]/10' : 'bg-[#1B3A6B]/5 group-hover:scale-110'}`}>
+              {uploadState === 'loaded' ? (
+                <CheckCircle size={28} className="text-[#059669]" />
+              ) : (
+                <Database size={28} className="text-[#1B3A6B] group-hover:text-[#0D7377] transition-colors" />
+              )}
+            </div>
+            <h3 className="text-lg font-bold text-[#1E293B] mb-2">
+              {uploadState === 'loaded' ? 'member_roster_q4.csv' : 'Upload Member Data'}
+            </h3>
+            <p className="text-[#64748B] text-sm mb-4">
+              {uploadState === 'loaded' ? '3.4 MB • Processed successfully' : 'Drag & drop your member demographics CSV file here.'}
+            </p>
+            {uploadState !== 'loaded' && (
+              <span className="bg-[#1B3A6B]/5 text-[#1B3A6B] px-4 py-2 rounded-lg text-sm font-bold group-hover:bg-[#0D7377] group-hover:text-white transition-colors">
+                Select File
+              </span>
+            )}
+          </div>
+        </div>
 
         {uploadState === 'uploading' && (
           <div className="glass-card p-16 flex flex-col items-center justify-center mb-8 animate-fade-in-up">
@@ -513,25 +531,6 @@ export default function ClaimGuardApp() {
 
         {uploadState === 'loaded' && (
           <>
-            <div className="flex gap-4 mb-6 animate-fade-in-up">
-              <div className="bg-white border border-[#059669]/30 px-4 py-3 rounded-xl flex items-center gap-3 shadow-sm">
-                <File size={20} className="text-[#059669]" />
-                <div>
-                  <p className="text-sm font-bold text-[#1E293B]">claims_batch_nov24.csv</p>
-                  <p className="text-[10px] text-[#64748B] uppercase tracking-wider">1.2 MB • Processed</p>
-                </div>
-                <CheckCircle size={16} className="text-[#059669] ml-4" />
-              </div>
-              <div className="bg-white border border-[#059669]/30 px-4 py-3 rounded-xl flex items-center gap-3 shadow-sm">
-                <Database size={20} className="text-[#059669]" />
-                <div>
-                  <p className="text-sm font-bold text-[#1E293B]">member_roster_q4.csv</p>
-                  <p className="text-[10px] text-[#64748B] uppercase tracking-wider">3.4 MB • Processed</p>
-                </div>
-                <CheckCircle size={16} className="text-[#059669] ml-4" />
-              </div>
-            </div>
-
             <div className="glass-card overflow-x-auto mb-8 animate-fade-in-up">
               <table className="w-full min-w-[1000px] text-left text-sm">
                 <thead className="bg-[#F4F7FB] text-[#64748B] font-medium border-b border-[#E2E8F0]">
@@ -568,7 +567,7 @@ export default function ClaimGuardApp() {
             </div>
 
             {visibleRows === CLAIMS.length && (
-              <div className="flex justify-center animate-fade-in-up">
+              <div className="flex justify-center animate-fade-in-up" style={{ animationDelay: '0.5s' }}>
                 <button 
                   onClick={handleAnalyze}
                   className="bg-[#0D7377] text-white px-8 py-3 rounded-lg font-semibold flex items-center gap-2 animate-pulse-teal hover:bg-[#0a5c5f] transition-colors"
