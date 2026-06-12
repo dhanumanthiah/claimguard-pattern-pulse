@@ -1,6 +1,6 @@
 # ClaimGuard Pattern Pulse
 
-**🔴 Live Demo:** https://claimsight-frontend.onrender.com
+**🔴 Live Demo:** https://claim-guard-pattern-pulse-code-fron.vercel.app/
 **💻 GitHub:** https://github.com/dhanumanthiah/claimguard-pattern-pulse
 
 Explainable AI anomaly detection for adjudicated Medicare Advantage claims. Detects behavioral anomalies — location conflicts, unsupported HCC codes, provider pattern spikes — before CMS encounter submission and routes HIGH-risk flags to SIU analysts for human review with plain-English explanations.
